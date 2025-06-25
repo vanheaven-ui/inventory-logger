@@ -40,7 +40,7 @@
             "useAndroidX": true,
             "extraMavenRepos": [
               {
-                "url": "https://maven.google.com" 
+                "url": "https://maven.google.com"
               }
             ],
             "exclude": {
@@ -48,8 +48,7 @@
               "module": "support-compat",
               "reason": "Force AndroidX migration"
             },
-            "dependencies": [
-            ]
+            "dependencies": []
           }
         }
       ]
@@ -57,10 +56,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "9d03814f-6a0f-4c7a-a984-8ac663f1bbf9"
-      }
-    }
+    "extra": {}
   }
 }

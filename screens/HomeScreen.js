@@ -1,7 +1,8 @@
+// HomeScreen.js
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LaguageContext";
+import { useLanguage } from "../context/LanguageContext"; 
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -31,6 +32,12 @@ export default function HomeScreen() {
           onPress={() => setAppLanguage("sw")}
         >
           <Text style={styles.languageButtonText}>{t("swahili")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity // New Runyakitara button
+          style={styles.languageButton}
+          onPress={() => setAppLanguage("ry")}
+        >
+          <Text style={styles.languageButtonText}>{t("runyakitara")}</Text>
         </TouchableOpacity>
       </View>
 

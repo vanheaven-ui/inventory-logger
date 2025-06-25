@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLanguage } from '../context/LaguageContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export default function TransactionHistoryScreen() {
   const [transactions, setTransactions] = useState([]);

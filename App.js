@@ -6,7 +6,7 @@ import HomeScreen from "./screens/HomeScreen";
 import TransactionHistoryScreen from "./screens/TransactionHistoryScreen";
 import TransactionScreen from "./screens/TransactionScreen";
 import SummaryScreen from "./screens/SummaryScreen";
-import { LanguageProvider } from "./context/LaguageContext";
+import { LanguageProvider } from "./context/LanguageContext";
 
 const Stack = createNativeStackNavigator();
 

@@ -1,3 +1,4 @@
+// context/LanguageContext.js
 import React, { createContext, useState, useEffect, useContext } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage"; // Ensure this import is correct
 
@@ -37,6 +38,7 @@ const translations = {
     english: "English",
     luganda: "Luganda",
     swahili: "Kiswahili",
+    runyakitara: "Runyakitara", // New language option
   },
   lg: {
     // Luganda
@@ -73,6 +75,7 @@ const translations = {
     english: "Lungereza", // English
     luganda: "Luganda", // Luganda
     swahili: "Kiswahili", // Swahili
+    runyakitara: "Runyakitara", // New language option
   },
   sw: {
     // Swahili
@@ -110,6 +113,44 @@ const translations = {
     english: "Kiingereza", // English
     luganda: "Luganda", // Luganda
     swahili: "Kiswahili", // Swahili
+    runyakitara: "Runyakitara", // New language option
+  },
+  ry: {
+    // Runyakitara (Simplified for demonstration, ideally more specific to a dialect or more general terms)
+    home_heading: "📦 Ebihagaro By'ebintu", // Inventory Logger (Ebihagaro = inventory/stock, By'ebintu = of items)
+    record_sale: "Handiika Ebyatundirwe", // Record what was sold
+    record_restock: "Handiika Ebyongiirweho", // Record what was added/restocked
+    view_summary: "Reeba Omushomo gw'Eriizooba", // See Today's Summary
+    view_history: "Reeba Ebyahandiikirwe", // See History/Records
+    tip_home:
+      "🎙️ Akamagezi: Kozesa akabuto ka 🎤 ak'amajwi ahari kiboodi yaawe kwereeta amanya g'ebintu ninga omubare mangu.", // Tip: Use the mic icon on your keyboard to quickly dictate item name or quantity.
+    item_name: "Eryooba ry'Ekintu", // Item Name
+    quantity: "Omubare", // Quantity
+    item_name_placeholder: "Eky'okureeberaho: Shuga", // e.g. Sugar
+    quantity_placeholder: "Eky'okureeberaho: 3", // e.g. 3
+    record_transaction: "Andiika Ekikorwa", // Record Transaction/Action
+    sale_recorded: "Ebyatundirwe byahandiikirwe gye", // Sale recorded successfully
+    restock_recorded: "Ebyongiirweho byahandiikirwe gye", // Restock recorded successfully
+    error_saving: "Habaho ensobi omu kuhandiika ekikorwa. Gerageza nate.", // Error saving transaction. Please try again.
+    item_name_required: "Eryooba ry'ekintu niryetaagisa", // Item name is required
+    quantity_required: "Omubare nigureetaagisa", // Quantity is required
+    valid_quantity: "Andiika omubare oguri ogwa kare", // Enter a valid quantity
+    tip_transaction:
+      "🎤 Akamagezi: Kanyiga akabuto ka mic ahari **kiboodi** yaawe kwereeta eryooba ry'ekintu ninga omubare.", // Tip: Tap the mic icon on your keyboard to speak item name or quantity.
+    record_a_sale: "Andiika Ebyatundirwe", // Record a Sale
+    record_a_restock: "Andiika Ebyongiirweho", // Record a Restock
+    todays_summary: "Omushomo gw'Eriizooba", // Today's Summary
+    sales: "Ebyatundirwe", // Sales
+    restocks: "Ebyongiirweho", // Restocks
+    transaction_history: "Ebyahandiikirwe by'Ebyakorwa", // Transaction History of Actions
+    no_transactions: "Tihariho bikorwa n'akimwe.", // No transactions yet.
+    sold: "Byatundirwe", // Sold
+    restocked: "Byongiirweho", // Restocked
+    select_language: "Toorana Orulimi:", // Select Language:
+    english: "Rungyereza", // English
+    luganda: "Luganda", // Luganda
+    swahili: "Kiswahili", // Swahili
+    runyakitara: "Runyakitara", // Runyakitara
   },
 };
 
@@ -142,7 +183,7 @@ export const LanguageProvider = ({ children }) => {
         console.error("Failed to save language to AsyncStorage", error);
       }
     } else {
-      console.warn(`Language '${lang}' is not supported.`);
+      console.warn(`Language '${lang}' is not supported.`); // Corrected template literal
     }
   };
 
