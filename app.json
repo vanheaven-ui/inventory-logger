@@ -21,8 +21,10 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.vanheaven.inventorylogger"
+      "package": "com.vanheaven.inventorylogger",
+      "versionCode": 1
     },
+    "plugins": ["./plugins/withAndroidManifestModifications.js"],
     "web": {
       "favicon": "./assets/favicon.png"
     },
