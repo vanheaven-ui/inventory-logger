@@ -24,7 +24,24 @@
       "package": "com.vanheaven.inventorylogger",
       "versionCode": 1
     },
-    "plugins": ["./plugins/withAndroidManifestModifications.js"],
+    "plugins": [
+      "./plugins/withAndroidManifestModifications.js",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true,
+            "buildToolsVersion": "35.0.0",
+            "minSdkVersion": 24,
+            "compileSdkVersion": 35,
+            "targetSdkVersion": 35,
+            "kotlinVersion": "2.0.21",
+            "enableJetifier": true,
+            "useAndroidX": true
+          }
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
