@@ -26,7 +26,7 @@ export default function App() {
           <Stack.Screen name="History" component={TransactionHistoryScreen} />
         </Stack.Navigator>
       </NavigationContainer>
-      <Toast /> {/* Toast component needs to be at the root of the app */}
+      <Toast /> 
     </LanguageProvider>
   );
 }
