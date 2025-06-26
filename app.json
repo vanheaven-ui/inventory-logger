@@ -38,10 +38,6 @@
             "kotlinVersion": "2.0.21",
             "enableJetifier": true,
             "useAndroidX": true,
-            "dependencies": [
-              "+:androidx.core:core:1.13.1",
-              "+:androidx.versionedparcelable:versionedparcelable:1.1.1"
-            ],
             "extraMavenRepos": [
               {
                 "url": "https://maven.google.com"
