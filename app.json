@@ -49,8 +49,8 @@
             ],
             "exclude": {
               "group": "com.android.support",
-              "module": "support-compat",
-              "reason": "Force AndroidX migration"
+              "module": ["support-compat", "versionedparcelable"],
+              "reason": "Force AndroidX migration and resolve duplicate classes"
             }
           }
         }
@@ -59,6 +59,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "904a73bc-3366-41a9-ba3c-23614ed0d9c4"
+      }
+    }
   }
 }
