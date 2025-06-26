@@ -12,8 +12,8 @@ import {
 } from "react-native";
 import Toast from "react-native-toast-message";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LanguageContext"; // Typo corrected: LanguageContext
-import Icon from "react-native-vector-icons/MaterialCommunityIcons"; // You'll need to install this: npm install react-native-vector-icons
+import { useLanguage } from "../context/LanguageContext"; 
+import { Ionicons } from '@expo/vector-icons';
 import { saveTransaction } from "../storage/transactionStorage";
 
 // For voice recognition (UI elements only, actual logic to be implemented)
@@ -95,7 +95,7 @@ export default function TransactionForm({ type, navigation }) {
       <View style={styles.card}>
         <View style={styles.inputGroup}>
           <Text style={styles.label}>{t("item_name")}</Text>
-          <View style={styles.inputWithIcon}>
+          <View style={styles.inputWithIonicons}>
             <TextInput
               style={styles.input}
               placeholder={t("item_name_placeholder")}
@@ -110,7 +110,7 @@ export default function TransactionForm({ type, navigation }) {
                   : startListening("itemName")
               }
             >
-              <Icon
+              <Ionicons
                 name={isListeningItemName ? "microphone-off" : "microphone"}
                 size={24}
                 color={isListeningItemName ? "#d9534f" : "#007bff"}
@@ -137,8 +137,8 @@ export default function TransactionForm({ type, navigation }) {
                   : startListening("quantity")
               }
             >
-              <Icon
-                name={isListeningQuantity ? "microphone-off" : "microphone"}
+              <Ionicons
+                name={isListeningQuantity ? "mic-off" : "mic"}
                 size={24}
                 color={isListeningQuantity ? "#d9534f" : "#007bff"}
               />
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     color: "#333",
   },
-  inputWithIcon: {
+  inputWithIonicons: {
     flexDirection: "row",
     alignItems: "center",
     borderColor: "#ccc",
