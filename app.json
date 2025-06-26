@@ -38,6 +38,10 @@
             "kotlinVersion": "2.0.21",
             "enableJetifier": true,
             "useAndroidX": true,
+            "dependencies": [
+              "+:androidx.core:core:1.13.1",
+              "+:androidx.versionedparcelable:versionedparcelable:1.1.1"
+            ],
             "extraMavenRepos": [
               {
                 "url": "https://maven.google.com"
@@ -47,8 +51,7 @@
               "group": "com.android.support",
               "module": "support-compat",
               "reason": "Force AndroidX migration"
-            },
-            "dependencies": []
+            }
           }
         }
       ]
@@ -56,6 +59,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "69343d3a-ef2d-4d00-9895-2ed38e1f50c4"
+      }
+    }
   }
 }
