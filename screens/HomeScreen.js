@@ -1,8 +1,9 @@
-// HomeScreen.js
+// screens/HomeScreen.js
 import React from "react";
 import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LanguageContext"; 
+import { useLanguage } from "../context/LanguageContext";
+import { FontAwesome5 } from "@expo/vector-icons"; // Import for shop icon
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -10,7 +11,16 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.heading}>{t("home_heading")}</Text>
+      {/* App Name and Logo */}
+      <View style={styles.appTitleContainer}>
+        <Text style={styles.heading}>{t("home_heading")}</Text>
+        <FontAwesome5
+          name="store-alt"
+          size={40}
+          color="#2196F3"
+          style={styles.logoIcon}
+        />
+      </View>
 
       {/* Language Selection Buttons */}
       <View style={styles.languageSelectionContainer}>
@@ -33,11 +43,30 @@ export default function HomeScreen() {
         >
           <Text style={styles.languageButtonText}>{t("swahili")}</Text>
         </TouchableOpacity>
-        <TouchableOpacity // New Runyakitara button
+        <TouchableOpacity
           style={styles.languageButton}
           onPress={() => setAppLanguage("ry")}
         >
           <Text style={styles.languageButtonText}>{t("runyakitara")}</Text>
+        </TouchableOpacity>
+        {/* New Language Buttons */}
+        <TouchableOpacity
+          style={styles.languageButton}
+          onPress={() => setAppLanguage("ach")}
+        >
+          <Text style={styles.languageButtonText}>{t("acholi")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.languageButton}
+          onPress={() => setAppLanguage("lgo")}
+        >
+          <Text style={styles.languageButtonText}>{t("lango")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.languageButton}
+          onPress={() => setAppLanguage("sog")}
+        >
+          <Text style={styles.languageButtonText}>{t("lusoga")}</Text>
         </TouchableOpacity>
       </View>
 
@@ -56,6 +85,14 @@ export default function HomeScreen() {
           }
         >
           <Text style={styles.buttonText}>{t("record_restock")}</Text>
+        </TouchableOpacity>
+
+        {/* New "Manage Inventory" button */}
+        <TouchableOpacity
+          style={[styles.button, styles.inventoryButton]}
+          onPress={() => navigation.navigate("Inventory")}
+        >
+          <Text style={styles.buttonText}>{t("manage_inventory")}</Text>
         </TouchableOpacity>
 
         {/* View Today's Summary button with unique styling */}
@@ -87,12 +124,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "#f4f6f8",
   },
-  heading: {
-    fontSize: 24,
-    fontWeight: "bold",
+  appTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginBottom: 30,
+  },
+  heading: {
+    fontSize: 28, // Slightly larger font for prominence
+    fontWeight: "bold",
     textAlign: "center",
     color: "#333", // Darken text for contrast
+    marginRight: 10, // Space between text and icon
+  },
+  logoIcon: {
+    // Styling for the shop icon
   },
   languageSelectionContainer: {
     flexDirection: "row",
@@ -142,6 +188,11 @@ const styles = StyleSheet.create({
   },
   restock: {
     backgroundColor: "#5cb85c", // Green for Restock
+  },
+  inventoryButton: {
+    // New style for inventory button
+    backgroundColor: "#ffc107", // Amber/Yellow for inventory
+    marginTop: 10,
   },
   summaryButton: {
     backgroundColor: "#007bff",

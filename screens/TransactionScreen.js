@@ -1,4 +1,3 @@
-// TransactionScreen.js
 import React from "react";
 import {
   View,
@@ -8,7 +7,7 @@ import {
   TouchableOpacity,
 } from "react-native";
 import TransactionForm from "../components/TransactionForm";
-import { useLanguage } from "../context/LanguageContext"; 
+import { useLanguage } from "../context/LanguageContext";
 import { useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons"; // Install this
 
@@ -17,9 +16,12 @@ export default function TransactionScreen({ route }) {
   const { t } = useLanguage();
   const navigation = useNavigation();
 
+  // Determine header background color based on transaction type
+  const headerBackgroundColor = type === "sell" ? "#dc3545" : "#28a745"; // Red for Sell, Green for Restock
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
+      <View style={[styles.header, { backgroundColor: headerBackgroundColor }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}
@@ -47,9 +49,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center", // Center title
     paddingVertical: 20,
-    backgroundColor: "#4a90e2", // Header background
+    // backgroundColor will be set dynamically
     borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+    borderBottomColor: "rgba(255,255,255,0.3)", // Lighter border for colored headers
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
