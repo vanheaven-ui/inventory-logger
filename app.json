@@ -45,7 +45,10 @@
             ],
             "exclude": {
               "group": "com.android.support",
-              "module": ["support-compat", "versionedparcelable"],
+              "module": [
+                "support-compat",
+                "versionedparcelable"
+              ],
               "reason": "Force AndroidX migration and resolve duplicate classes"
             },
             "gradleCommandHooks": {
@@ -67,7 +70,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "904a73bc-3366-41a9-ba3c-23614ed0d9c4"
+        "projectId": "82f0efef-8f1d-4d45-a098-efcac36b6b82"
       }
     }
   }
