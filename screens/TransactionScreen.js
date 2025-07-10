@@ -1,39 +1,77 @@
-import React from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
   StyleSheet,
   SafeAreaView,
   TouchableOpacity,
+  ActivityIndicator,
 } from "react-native";
 import TransactionForm from "../components/TransactionForm";
 import { useLanguage } from "../context/LanguageContext";
-import { useNavigation } from "@react-navigation/native";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons"; // Install this
+import { useNavigation, useFocusEffect } from "@react-navigation/native";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const IS_AGENT_KEY = "isMobileMoneyAgent";
 
 export default function TransactionScreen({ route }) {
-  const { type } = route.params;
+  const { type } = route.params; // 'sell' or 'restock'
   const { t } = useLanguage();
   const navigation = useNavigation();
 
-  // Determine header background color based on transaction type
-  const headerBackgroundColor = type === "sell" ? "#dc3545" : "#28a745"; // Red for Sell, Green for Restock
+  const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
+  const [loadingAgentStatus, setLoadingAgentStatus] = useState(true);
+
+  const loadAgentStatus = useCallback(async () => {
+    try {
+      setLoadingAgentStatus(true);
+      const storedStatus = await AsyncStorage.getItem(IS_AGENT_KEY);
+      if (storedStatus !== null) {
+        setIsMobileMoneyAgent(JSON.parse(storedStatus));
+      } else {
+        setIsMobileMoneyAgent(false); // Default to false if not found
+      }
+    } catch (error) {
+      console.error("TransactionScreen: Failed to load agent status:", error);
+      setIsMobileMoneyAgent(false); // Ensure a default even on error
+    } finally {
+      setLoadingAgentStatus(false);
+    }
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadAgentStatus();
+    }, [loadAgentStatus])
+  );
+
+  const headerBackgroundColor = type === "sell" ? "#dc3545" : "#28a745";
+
+  const headerTitle = isMobileMoneyAgent
+    ? type === "sell"
+      ? t("record_a_withdrawal")
+      : t("record_a_deposit")
+    : type === "sell"
+    ? t("record_a_sale")
+    : t("record_a_restock");
+
+  if (loadingAgentStatus) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text style={styles.loadingText}>{t("loading_agent_status")}</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={[styles.header, { backgroundColor: headerBackgroundColor }]}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Icon name="arrow-left" size={24} color="#fff" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {type === "sell" ? t("record_a_sale") : t("record_a_restock")}
-        </Text>
+        <Text style={styles.headerTitle}>{headerTitle}</Text>
       </View>
       <View style={styles.screenContent}>
-        <TransactionForm type={type} />
+        <TransactionForm type={type} isMobileMoneyAgent={isMobileMoneyAgent} />
       </View>
     </SafeAreaView>
   );
@@ -44,14 +82,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f6f6f6",
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f6f6f6",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#555",
+  },
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center", // Center title
+    justifyContent: "center",
     paddingVertical: 20,
-    // backgroundColor will be set dynamically
     borderBottomWidth: 1,
-    borderBottomColor: "rgba(255,255,255,0.3)", // Lighter border for colored headers
+    borderBottomColor: "rgba(255,255,255,0.3)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
@@ -62,17 +110,20 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: "600",
     color: "#fff",
-    flex: 1, // Allow title to take available space
-    textAlign: "center", // Center text
-    paddingRight: 40, // Offset for back button to truly center
+    flex: 1,
+    textAlign: "center",
+    // Adjust padding to visually center the title despite the back button's presence
+    paddingRight: 50, // Roughly the width of the back button + its padding
+    paddingLeft: 20,
   },
   backButton: {
     position: "absolute",
     left: 20,
     padding: 5,
+    zIndex: 1, // Ensure the back button is tappable
   },
   screenContent: {
     flex: 1,
-    paddingTop: 0, // TransactionForm has its own padding
+    paddingTop: 0,
   },
 });

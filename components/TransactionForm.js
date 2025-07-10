@@ -1,4 +1,3 @@
-// components/TransactionForm.js
 import React, { useState, useEffect, useCallback } from "react";
 import {
   View,
@@ -9,53 +8,64 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import Toast from "react-native-toast-message";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
-import { saveTransaction, getInventory } from "../storage/transactionStorage"; // Import getInventory
+import {
+  saveTransaction,
+  getGeneralInventoryItems,
+  getFloatEntries,
+  updateGeneralInventoryItem,
+  updateFloatEntry,
+  calculateCommission,
+} from "../storage/transactionStorage";
 
-// MOCK Voice recognition for demonstration.
-// In a real React Native app, you would uncomment and use:
-// import Voice from '@react-native-community/voice';
+export default function TransactionForm({ isMobileMoneyAgent }) {
+  const route = useRoute();
+  const { type } = route.params; // 'sell' or 'restock' from TransactionScreen
 
-export default function TransactionForm({ type, navigation }) {
-  const [itemName, setItemName] = useState("");
-  const [quantity, setQuantity] = useState("");
+  const [networkName, setNetworkName] = useState(""); // For MM, this is network. For shop, item name.
+  const [transactionAmount, setTransactionAmount] = useState(""); // For MM, this is transaction amount. For shop, quantity.
+  const [customerIdentifier, setCustomerIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const nav = useNavigation();
 
-  // State for voice recognition (UI elements only)
-  const [isListeningItemName, setIsListeningItemName] = useState(false);
-  const [isListeningQuantity, setIsListeningQuantity] = useState(false);
+  const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
+  const [isListeningAmount, setIsListeningAmount] = useState(false);
+  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] =
+    useState(false);
   const [speechResult, setSpeechResult] = useState("");
 
-  // MOCK VOICE RECOGNITION FUNCTIONS
+  // MOCK VOICE RECOGNITION FUNCTIONS - Keep as is
   const mockStartListening = useCallback((field) => {
     console.log(`MOCK: Starting listening for ${field}`);
-    if (field === "itemName") setIsListeningItemName(true);
-    if (field === "quantity") setIsListeningQuantity(true);
+    if (field === "networkName") setIsListeningNetworkName(true);
+    else if (field === "transactionAmount") setIsListeningAmount(true);
+    else if (field === "customerIdentifier")
+      setIsListeningCustomerIdentifier(true);
     setSpeechResult("");
 
     setTimeout(() => {
       let mockResult = "";
-      if (field === "itemName") {
-        const mockItems = [
-          "Sugar",
-          "Salt",
-          "Milk",
-          "Bread",
-          "Soap",
-          "Rice",
-          "Flour",
-          "Eggs",
-          "Soda",
+      if (field === "networkName") {
+        const mockNetworks = ["MTN", "Airtel", "Africell", "Salt", "Sugar"];
+        mockResult =
+          mockNetworks[Math.floor(Math.random() * mockNetworks.length)];
+      } else if (field === "transactionAmount") {
+        mockResult = (Math.floor(Math.random() * 95000) + 5000).toString();
+      } else if (field === "customerIdentifier") {
+        const mockCustomers = [
+          "0771234567",
+          "0701987654",
+          "John Doe",
+          "Sarah K.",
         ];
-        mockResult = mockItems[Math.floor(Math.random() * mockItems.length)];
-      } else if (field === "quantity") {
-        mockResult = (Math.floor(Math.random() * 10) + 1).toString();
+        mockResult =
+          mockCustomers[Math.floor(Math.random() * mockCustomers.length)];
       }
       setSpeechResult(mockResult);
       Toast.show({
@@ -69,109 +79,187 @@ export default function TransactionForm({ type, navigation }) {
 
   const mockStopListening = useCallback((field) => {
     console.log(`MOCK: Stopping listening for ${field}`);
-    if (field === "itemName") setIsListeningItemName(false);
-    if (field === "quantity") setIsListeningQuantity(false);
+    if (field === "networkName") setIsListeningNetworkName(false);
+    else if (field === "transactionAmount") setIsListeningAmount(false);
+    else if (field === "customerIdentifier")
+      setIsListeningCustomerIdentifier(false);
   }, []);
 
   useEffect(() => {
     if (speechResult) {
-      if (isListeningItemName) {
-        setItemName(speechResult);
-        setIsListeningItemName(false);
-      } else if (isListeningQuantity) {
-        setQuantity(speechResult);
-        setIsListeningQuantity(false);
+      if (isListeningNetworkName) {
+        setNetworkName(speechResult);
+        setIsListeningNetworkName(false);
+      } else if (isListeningAmount) {
+        setTransactionAmount(speechResult);
+        setIsListeningAmount(false);
+      } else if (isListeningCustomerIdentifier) {
+        setCustomerIdentifier(speechResult);
+        setIsListeningCustomerIdentifier(false);
       }
       setSpeechResult("");
     }
   }, [
     speechResult,
-    isListeningItemName,
-    isListeningQuantity,
-    setItemName,
-    setQuantity,
+    isListeningNetworkName,
+    isListeningAmount,
+    isListeningCustomerIdentifier,
   ]);
 
+  // --- NEW: Function to determine button text dynamically ---
+  const getSubmitButtonText = useCallback(() => {
+    if (isMobileMoneyAgent) {
+      if (type === "sell") {
+        return t("record_withdrawal"); // "Record Withdrawal"
+      } else {
+        // type === 'restock'
+        return t("record_deposit"); // "Record Deposit"
+      }
+    } else {
+      if (type === "sell") {
+        return t("record_sale"); // "Record Sale"
+      } else {
+        // type === 'restock'
+        return t("record_restock"); // "Record Restock"
+      }
+    }
+  }, [isMobileMoneyAgent, type, t]); // Depends on these props/state
+
   const handleSubmit = async () => {
-    if (!itemName.trim()) {
+    const isWithdrawal = type === "sell";
+    const parsedAmount = parseFloat(transactionAmount);
+
+    if (!networkName.trim()) {
       Toast.show({
         type: "error",
-        text1: t("item_name_required"),
+        text1: t("network_name_required"),
       });
       return;
     }
-    const parsedQuantity = parseInt(quantity);
-    if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
       Toast.show({
         type: "error",
-        text1: t("valid_quantity"),
+        text1: t("valid_amount_required"),
+      });
+      return;
+    }
+
+    if (isMobileMoneyAgent && isWithdrawal && !customerIdentifier.trim()) {
+      Toast.show({
+        type: "error",
+        text1: t("customer_id_required_for_withdrawal"),
       });
       return;
     }
 
     setLoading(true);
     try {
-      let transactionSuccess = false;
-      const currentInventory = await getInventory();
-      const existingItem = currentInventory.find(
-        (item) => item.itemName.toLowerCase() === itemName.trim().toLowerCase()
-      );
+      let transactionPayload = {
+        id: Date.now().toString(), // Add a unique ID for each transaction
+        type: type, // "sell" or "restock"
+        itemName: networkName, // "Salt" or "MTN" etc.
+        quantity: parsedAmount, // Number of units for general, or actual amount for MM
+        customer: customerIdentifier, // For MM, or general customer info
+        isMobileMoneyAgent: isMobileMoneyAgent, // Pass this directly
+        timestamp: new Date().toISOString(), // Add timestamp for sorting/filtering
+      };
 
-      if (type === "sell") {
-        if (!existingItem) {
-          Toast.show({
-            type: "error",
-            text1: t("item_not_found"),
-          });
-          setLoading(false);
-          return;
-        }
-        if (existingItem.currentStock < parsedQuantity) {
-          Toast.show({
-            type: "error",
-            text1: t("insufficient_stock"),
-          });
-          setLoading(false);
-          return;
-        }
-        // If selling, use existing cost/selling price for transaction record consistency
-        transactionSuccess = await saveTransaction(type, {
-          itemName: itemName.trim(),
-          quantity: parsedQuantity,
-          costPrice: existingItem.costPricePerUnit, // Pass existing prices
-          sellingPrice: existingItem.sellingPricePerUnit,
-        });
-      } else if (type === "restock") {
-        // For restock, if new item, default prices to 0. User can later edit via Manage Item.
-        transactionSuccess = await saveTransaction(type, {
-          itemName: itemName.trim(),
-          quantity: parsedQuantity,
-          costPrice: existingItem ? existingItem.costPricePerUnit : 0,
-          sellingPrice: existingItem ? existingItem.sellingPricePerUnit : 0,
-        });
-      }
+      if (!isMobileMoneyAgent) {
+        let currentItems = await getGeneralInventoryItems();
+        let existingItem = currentItems.find(
+          (item) =>
+            item.itemName &&
+            item.itemName.toLowerCase() === networkName.toLowerCase()
+        );
 
-      if (transactionSuccess) {
-        Toast.show({
-          type: "success",
-          text1: type === "sell" ? t("sale_recorded") : t("restock_recorded"),
-        });
-        setItemName("");
-        setQuantity("");
-        nav.goBack();
+        if (existingItem) {
+          transactionPayload.costPrice = existingItem.costPricePerUnit;
+          transactionPayload.sellingPrice = existingItem.sellingPricePerUnit;
+          // Calculate amount for general sales/restocks
+          if (type === "sell") {
+            transactionPayload.amount =
+              parsedAmount * existingItem.sellingPricePerUnit; // Quantity * sellingPrice
+          } else if (type === "restock") {
+            transactionPayload.amount =
+              parsedAmount * existingItem.costPricePerUnit; // Quantity * costPrice
+          }
+          // Update inventory quantity
+          const updatedQuantity =
+            type === "sell"
+              ? existingItem.quantity - parsedAmount
+              : existingItem.quantity + parsedAmount;
+          await updateGeneralInventoryItem({
+            ...existingItem,
+            quantity: updatedQuantity,
+          });
+        } else {
+          console.warn(
+            `Item "${networkName}" not found in general inventory. Transaction recorded without price/cost. Consider adding it to inventory.`
+          );
+          transactionPayload.costPrice = 0;
+          transactionPayload.sellingPrice = 0;
+          transactionPayload.amount = 0; // Default amount if price is unknown
+          Toast.show({
+            type: "info",
+            text1: t("item_not_in_inventory_warning"),
+            text2: t("consider_adding_item"),
+          });
+        }
       } else {
-        // This 'else' block would catch other internal saveTransaction failures
-        // which are already logged internally, but providing a generic error here
-        Toast.show({
-          type: "error",
-          text1: t("error_saving"),
-        });
+        // For Mobile Money
+        transactionPayload.amount = parsedAmount; // The amount transacted
+        const commission = await calculateCommission(
+          networkName,
+          parsedAmount,
+          type
+        );
+        transactionPayload.commissionEarned = commission;
+
+        // Update mobile money float (assumes you have a 'networkName' for float entries)
+        let currentFloatEntries = await getFloatEntries();
+        let existingFloat = currentFloatEntries.find(
+          (entry) => entry.network.toLowerCase() === networkName.toLowerCase()
+        );
+
+        if (existingFloat) {
+          const updatedFloatValue =
+            type === "sell" // withdrawal
+              ? existingFloat.currentFloat - parsedAmount
+              : existingFloat.currentFloat + parsedAmount; // deposit
+          await updateFloatEntry({
+            ...existingFloat,
+            currentFloat: updatedFloatValue,
+          });
+        } else {
+          console.warn(
+            `Float entry for network "${networkName}" not found. Float not updated.`
+          );
+          Toast.show({
+            type: "info",
+            text1: t("float_not_updated_warning"),
+            text2: t("consider_adding_float_entry", { network: networkName }),
+          });
+        }
       }
+
+      console.log(
+        "Final Transaction Payload to saveTransaction:",
+        JSON.stringify(transactionPayload, null, 2)
+      ); // Debug log
+
+      await saveTransaction(transactionPayload);
+
+      Toast.show({
+        type: "success",
+        text1: t("transaction_recorded"),
+      });
+      nav.goBack();
     } catch (error) {
       console.error("Error submitting transaction:", error);
       Toast.show({
         type: "error",
-        text1: t("error_saving"),
+        text1: t("error_submitting_transaction"),
+        text2: error.message || "Please try again.",
       });
     } finally {
       setLoading(false);
@@ -180,78 +268,95 @@ export default function TransactionForm({ type, navigation }) {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 100 : 20}
+      style={styles.container}
     >
-      <View style={styles.card}>
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{t("item_name")}</Text>
-          <View style={styles.inputWithIonicons}>
-            <TextInput
-              style={styles.input}
-              placeholder={t("item_name_placeholder")}
-              value={itemName}
-              onChangeText={setItemName}
+      <View style={styles.form}>
+        <Text style={styles.label}>
+          {isMobileMoneyAgent ? t("network_name") : t("item_name")}
+        </Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={networkName}
+            onChangeText={setNetworkName}
+            placeholder={
+              isMobileMoneyAgent ? t("enter_network") : t("enter_item_name")
+            }
+            placeholderTextColor="#999"
+          />
+          <TouchableOpacity
+            onPress={() => mockStartListening("networkName")}
+            style={styles.micButton}
+          >
+            <Ionicons
+              name={isListeningNetworkName ? "mic" : "mic-outline"}
+              size={24}
+              color="#007bff"
             />
-            <TouchableOpacity
-              style={styles.micButton}
-              onPress={() =>
-                isListeningItemName
-                  ? mockStopListening("itemName")
-                  : mockStartListening("itemName")
-              }
-            >
-              <Ionicons
-                name={isListeningItemName ? "mic-off" : "mic"}
-                size={24}
-                color={isListeningItemName ? "#d9534f" : "#007bff"}
-              />
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>{t("quantity")}</Text>
-          <View style={styles.inputWithIonicons}>
-            <TextInput
-              style={styles.input}
-              placeholder={t("quantity_placeholder")}
-              keyboardType="numeric"
-              value={quantity}
-              onChangeText={setQuantity}
+        <Text style={styles.label}>
+          {isMobileMoneyAgent ? t("transaction_amount") : t("quantity")}
+        </Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            value={transactionAmount}
+            onChangeText={setTransactionAmount}
+            keyboardType="numeric"
+            placeholder={
+              isMobileMoneyAgent ? t("enter_amount") : t("enter_quantity")
+            }
+            placeholderTextColor="#999"
+          />
+          <TouchableOpacity
+            onPress={() => mockStartListening("transactionAmount")}
+            style={styles.micButton}
+          >
+            <Ionicons
+              name={isListeningAmount ? "mic" : "mic-outline"}
+              size={24}
+              color="#007bff"
             />
-            <TouchableOpacity
-              style={styles.micButton}
-              onPress={() =>
-                isListeningQuantity
-                  ? mockStopListening("quantity")
-                  : mockStartListening("quantity")
-              }
-            >
-              <Ionicons
-                name={isListeningQuantity ? "mic-off" : "mic"}
-                size={24}
-                color={isListeningQuantity ? "#d9534f" : "#007bff"}
-              />
-            </TouchableOpacity>
-          </View>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity
-          style={styles.submitButton}
-          onPress={handleSubmit}
-          disabled={loading || isListeningItemName || isListeningQuantity}
-        >
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.submitButtonText}>
-              {t("record_transaction")}
+        {isMobileMoneyAgent && type === "sell" && (
+          <>
+            <Text style={styles.label}>{t("customer_identifier")}</Text>
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                value={customerIdentifier}
+                onChangeText={setCustomerIdentifier}
+                placeholder={t("enter_customer_phone_or_name")}
+                placeholderTextColor="#999"
+              />
+              <TouchableOpacity
+                onPress={() => mockStartListening("customerIdentifier")}
+                style={styles.micButton}
+              >
+                <Ionicons
+                  name={isListeningCustomerIdentifier ? "mic" : "mic-outline"}
+                  size={24}
+                  color="#007bff"
+                />
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+
+        {loading ? (
+          <ActivityIndicator size="large" color="#007bff" />
+        ) : (
+          <TouchableOpacity style={styles.button} onPress={handleSubmit}>
+            <Text style={styles.buttonText}>
+              {getSubmitButtonText()} {/* Dynamic text here! */}
             </Text>
-          )}
-        </TouchableOpacity>
-        <Text style={styles.tipText}>{t("tip_transaction")}</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -260,69 +365,55 @@ export default function TransactionForm({ type, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: "#f6f6f6",
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f4f6f8",
     padding: 20,
   },
-  card: {
+  form: {
     backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 25,
-    width: "100%",
-    maxWidth: 400,
-    elevation: 5,
+    borderRadius: 10,
+    padding: 20,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-  },
-  inputGroup: {
-    marginBottom: 20,
+    elevation: 5,
   },
   label: {
     fontSize: 16,
-    fontWeight: "bold",
     marginBottom: 8,
     color: "#333",
+    fontWeight: "500",
   },
-  inputWithIonicons: {
+  inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    borderColor: "#ccc",
+    marginBottom: 15,
     borderWidth: 1,
+    borderColor: "#ddd",
     borderRadius: 8,
-    paddingHorizontal: 10,
     backgroundColor: "#fcfcfc",
   },
   input: {
     flex: 1,
-    height: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
   },
   micButton: {
-    padding: 8,
-    marginLeft: 10,
+    padding: 10,
   },
-  submitButton: {
+  button: {
     backgroundColor: "#007bff",
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: "center",
-    justifyContent: "center",
     marginTop: 20,
   },
-  submitButtonText: {
+  buttonText: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "bold",
-  },
-  tipText: {
-    marginTop: 20,
-    textAlign: "center",
-    color: "#666",
-    fontSize: 13,
-    fontStyle: "italic",
+    fontWeight: "600",
   },
 });

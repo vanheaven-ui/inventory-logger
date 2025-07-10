@@ -14,14 +14,15 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
-import { Ionicons } from "@expo/vector-icons"; // Import Ionicons for mic icons
-import { saveInventoryItem } from "../storage/transactionStorage";
+import { Ionicons } from "@expo/vector-icons";
+import { saveInventoryItem } from "../storage/transactionStorage"; // Make sure this function correctly handles both add and update
 import Toast from "react-native-toast-message";
 
 export default function ManageItemScreen({ route }) {
   const navigation = useNavigation();
   const { t } = useLanguage();
-  const existingItem = route.params?.item || null; // Item passed for editing
+  // Item passed for editing. If it's an edit, existingItem will have an 'id'.
+  const existingItem = route.params?.item || null;
 
   const [itemName, setItemName] = useState(
     existingItem ? existingItem.itemName : ""
@@ -46,66 +47,87 @@ export default function ManageItemScreen({ route }) {
   const [activeVoiceField, setActiveVoiceField] = useState(null); // To track which field is currently listening
 
   // MOCK VOICE RECOGNITION FUNCTIONS
-  const mockStartListening = useCallback((field) => {
-    console.log(`MOCK: Starting listening for ${field}`);
-    setActiveVoiceField(field); // Set active field
-    setSpeechResult("");
-
-    // Reset all listening states
-    setIsListeningItemName(false);
-    setIsListeningCurrentStock(false);
-    setIsListeningCostPrice(false);
-    setIsListeningSellingPrice(false);
-
-    // Set the specific field to listening
-    if (field === "itemName") setIsListeningItemName(true);
-    else if (field === "currentStock") setIsListeningCurrentStock(true);
-    else if (field === "costPricePerUnit") setIsListeningCostPrice(true);
-    else if (field === "sellingPricePerUnit") setIsListeningSellingPrice(true);
-
-    setTimeout(() => {
-      let mockResult = "";
-      if (field === "itemName") {
-        const mockItems = [
-          "Sugar",
-          "Salt",
-          "Milk",
-          "Bread",
-          "Soap",
-          "Rice",
-          "Flour",
-          "Eggs",
-          "Soda",
-          "Milo",
-          "Coffee",
-        ];
-        mockResult = mockItems[Math.floor(Math.random() * mockItems.length)];
-      } else if (field === "currentStock") {
-        mockResult = (Math.floor(Math.random() * 100) + 1).toString(); // Random stock up to 100
-      } else if (field === "costPricePerUnit") {
-        mockResult = (Math.floor(Math.random() * 5000) + 500).toString(); // Random price 500-5500
-      } else if (field === "sellingPricePerUnit") {
-        mockResult = (Math.floor(Math.random() * 7000) + 1000).toString(); // Random price 1000-8000
+  // Simplified startListening to ensure only one field is listening at a time
+  const mockStartListening = useCallback(
+    (field) => {
+      // Prevent starting if another field is already listening
+      if (activeVoiceField) {
+        Toast.show({
+          type: "info",
+          text1: "Please wait, another voice input is active.",
+          visibilityTime: 2000,
+        });
+        return;
       }
-      setSpeechResult(mockResult);
-      Toast.show({
-        type: "info",
-        text1: `Voice Input (${field}): ${mockResult}`,
-        visibilityTime: 2000,
-      });
-      console.log(`MOCK: Received speech result for ${field}: ${mockResult}`);
-    }, 2000); // Simulate 2 seconds of listening
-  }, []);
+
+      console.log(`MOCK: Starting listening for ${field}`);
+      setActiveVoiceField(field); // Set active field
+      setSpeechResult(""); // Clear previous result
+
+      // Reset all listening states first
+      setIsListeningItemName(false);
+      setIsListeningCurrentStock(false);
+      setIsListeningCostPrice(false);
+      setIsListeningSellingPrice(false);
+
+      // Set the specific field to listening
+      if (field === "itemName") setIsListeningItemName(true);
+      else if (field === "currentStock") setIsListeningCurrentStock(true);
+      else if (field === "costPricePerUnit") setIsListeningCostPrice(true);
+      else if (field === "sellingPricePerUnit")
+        setIsListeningSellingPrice(true);
+
+      // Simulate speech recognition result after a delay
+      setTimeout(() => {
+        let mockResult = "";
+        if (field === "itemName") {
+          const mockItems = [
+            "Sugar",
+            "Salt",
+            "Milk",
+            "Bread",
+            "Soap",
+            "Rice",
+            "Flour",
+            "Eggs",
+            "Soda",
+            "Milo",
+            "Coffee",
+          ];
+          mockResult = mockItems[Math.floor(Math.random() * mockItems.length)];
+        } else if (field === "currentStock") {
+          mockResult = (Math.floor(Math.random() * 100) + 1).toString(); // Random stock up to 100
+        } else if (field === "costPricePerUnit") {
+          mockResult = (Math.floor(Math.random() * 5000) + 500).toString(); // Random price 500-5500
+        } else if (field === "sellingPricePerUnit") {
+          mockResult = (Math.floor(Math.random() * 7000) + 1000).toString(); // Random price 1000-8000
+        }
+        setSpeechResult(mockResult); // Set the result
+        Toast.show({
+          type: "info",
+          text1: `${t("voice_input_for")} ${field}: ${mockResult}`, // Added translation for voice input
+          visibilityTime: 2000,
+        });
+        console.log(`MOCK: Received speech result for ${field}: ${mockResult}`);
+        // No need to stop listening here, useEffect handles setting the value and resetting states
+      }, 2000); // Simulate 2 seconds of listening
+    },
+    [activeVoiceField, t]
+  ); // Added t as a dependency for translation
 
   const mockStopListening = useCallback((field) => {
     console.log(`MOCK: Stopping listening for ${field}`);
-    setActiveVoiceField(null); // Clear active field
+    // Immediately stop the specific listening state
     if (field === "itemName") setIsListeningItemName(false);
     else if (field === "currentStock") setIsListeningCurrentStock(false);
     else if (field === "costPricePerUnit") setIsListeningCostPrice(false);
     else if (field === "sellingPricePerUnit") setIsListeningSellingPrice(false);
+
+    setActiveVoiceField(null); // Clear active field
+    setSpeechResult(""); // Clear any pending speech result if stopped manually
   }, []);
 
+  // Effect to apply speech result to the correct input field
   useEffect(() => {
     if (speechResult && activeVoiceField) {
       if (activeVoiceField === "itemName") {
@@ -119,7 +141,8 @@ export default function ManageItemScreen({ route }) {
       }
       setSpeechResult(""); // Clear the result after use
       setActiveVoiceField(null); // Reset active voice field
-      // Also stop all listening flags
+
+      // Ensure all listening flags are reset after a result is applied
       setIsListeningItemName(false);
       setIsListeningCurrentStock(false);
       setIsListeningCostPrice(false);
@@ -144,7 +167,7 @@ export default function ManageItemScreen({ route }) {
     ) {
       Toast.show({
         type: "info",
-        text1: "Please wait for voice input to complete.",
+        text1: t("wait_for_voice_input"), // Using translation key
       });
       return;
     }
@@ -155,14 +178,14 @@ export default function ManageItemScreen({ route }) {
     }
     const parsedStock = parseInt(currentStock);
     if (isNaN(parsedStock) || parsedStock < 0) {
-      Toast.show({ type: "error", text1: t("valid_quantity") }); // Reusing valid_quantity for stock
+      Toast.show({ type: "error", text1: t("valid_quantity") });
       return;
     }
     const parsedCostPrice = parseFloat(costPricePerUnit);
     if (isNaN(parsedCostPrice) || parsedCostPrice < 0) {
       Toast.show({
         type: "error",
-        text1: t("valid_cost_price") || "Please enter a valid cost price.",
+        text1: t("valid_cost_price"),
       });
       return;
     }
@@ -170,8 +193,14 @@ export default function ManageItemScreen({ route }) {
     if (isNaN(parsedSellingPrice) || parsedSellingPrice < 0) {
       Toast.show({
         type: "error",
-        text1:
-          t("valid_selling_price") || "Please enter a valid selling price.",
+        text1: t("valid_selling_price"),
+      });
+      return;
+    }
+    if (parsedSellingPrice < parsedCostPrice) {
+      Toast.show({
+        type: "error",
+        text1: t("selling_price_less_than_cost"), // New translation key
       });
       return;
     }
@@ -179,26 +208,31 @@ export default function ManageItemScreen({ route }) {
     setLoading(true);
     try {
       const itemToSave = {
-        id: existingItem ? existingItem.id : null, // Use existing ID for updates
+        // If existingItem exists, pass its ID for updating; otherwise, let saveInventoryItem generate a new one.
+        ...(existingItem && { itemName: existingItem.itemName }), // Keep original itemName for key if editing
+        // For new items or if itemName changed during edit (though disabled for edit currently)
         itemName: itemName.trim(),
         currentStock: parsedStock,
         costPricePerUnit: parsedCostPrice,
         sellingPricePerUnit: parsedSellingPrice,
+        lastUpdated: Date.now(), // Add last updated timestamp
       };
-      await saveInventoryItem(itemToSave);
-      Toast.show({ type: "success", text1: t("item_saved") });
+
+      await saveInventoryItem(itemToSave); // This function should handle both add and update based on itemName existence
+      Toast.show({ type: "success", text1: t("item_saved_success") }); // New translation key
       navigation.goBack(); // Go back to Inventory screen
     } catch (error) {
       console.error("Error saving item:", error);
       Toast.show({
         type: "error",
-        text1: "Error saving item. Please try again.",
+        text1: t("error_saving_item"), // New translation key
       });
     } finally {
       setLoading(false);
     }
   };
 
+  // Helper to determine if any field is currently listening
   const isAnyFieldListening =
     isListeningItemName ||
     isListeningCurrentStock ||
@@ -235,7 +269,8 @@ export default function ManageItemScreen({ route }) {
                   placeholder={t("item_name_placeholder")}
                   value={itemName}
                   onChangeText={setItemName}
-                  editable={!existingItem && !isAnyFieldListening} // Disable if editing existing or listening
+                  // Item name is NOT editable if editing an existing item to prevent key changes
+                  editable={!existingItem && !isAnyFieldListening}
                 />
                 <TouchableOpacity
                   style={styles.micButton}
@@ -244,11 +279,11 @@ export default function ManageItemScreen({ route }) {
                       ? mockStopListening("itemName")
                       : mockStartListening("itemName")
                   }
+                  // Mic button is disabled if editing existing item, or if another field is listening
                   disabled={
-                    existingItem
-                      ? true
-                      : isAnyFieldListening && !isListeningItemName
-                  } // Disable if editing existing or another field is listening
+                    existingItem ||
+                    (isAnyFieldListening && !isListeningItemName)
+                  }
                 >
                   <Ionicons
                     name={isListeningItemName ? "mic-off" : "mic"}
@@ -269,7 +304,7 @@ export default function ManageItemScreen({ route }) {
                   keyboardType="numeric"
                   value={currentStock}
                   onChangeText={setCurrentStock}
-                  editable={!isAnyFieldListening} // Disable if listening
+                  editable={!isAnyFieldListening} // Disable if any field is listening
                 />
                 <TouchableOpacity
                   style={styles.micButton}
@@ -299,7 +334,7 @@ export default function ManageItemScreen({ route }) {
                   keyboardType="numeric"
                   value={costPricePerUnit}
                   onChangeText={setCostPricePerUnit}
-                  editable={!isAnyFieldListening} // Disable if listening
+                  editable={!isAnyFieldListening} // Disable if any field is listening
                 />
                 <TouchableOpacity
                   style={styles.micButton}
@@ -329,7 +364,7 @@ export default function ManageItemScreen({ route }) {
                   keyboardType="numeric"
                   value={sellingPricePerUnit}
                   onChangeText={setSellingPricePerUnit}
-                  editable={!isAnyFieldListening} // Disable if listening
+                  editable={!isAnyFieldListening} // Disable if any field is listening
                 />
                 <TouchableOpacity
                   style={styles.micButton}
@@ -352,7 +387,7 @@ export default function ManageItemScreen({ route }) {
             <TouchableOpacity
               style={styles.saveButton}
               onPress={handleSubmit}
-              disabled={loading || isAnyFieldListening}
+              disabled={loading || isAnyFieldListening} // Disable if loading or any voice input is active
             >
               {loading ? (
                 <ActivityIndicator color="#fff" />
@@ -427,7 +462,6 @@ const styles = StyleSheet.create({
     color: "#333",
   },
   inputWithIonicons: {
-    // New style for input with icon
     flexDirection: "row",
     alignItems: "center",
     borderColor: "#ccc",
@@ -441,7 +475,6 @@ const styles = StyleSheet.create({
     height: 50,
     fontSize: 16,
     color: "#333",
-    // Removed direct borderWidth, borderRadius, paddingHorizontal to use inputWithIonicons
   },
   micButton: {
     padding: 8,

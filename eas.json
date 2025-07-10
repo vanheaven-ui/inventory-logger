@@ -12,7 +12,16 @@
       "distribution": "internal"
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk" 
+      }
+    },
+    "apk_build": { 
+      "extends": "production", 
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

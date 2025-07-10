@@ -1,294 +1,674 @@
-// storage/transactionStorage.js
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const TRANSACTIONS_KEY = "transactions";
-const INVENTORY_KEY = "inventory";
-const LAST_SUMMARY_RESET_KEY = "lastSummaryResetTimestamp"; // Key for tracking summary reset point
-const DAILY_SUMMARY_DATA_KEY = "dailySummaryData"; // New key for storing computed daily summary
+// --- Keys for AsyncStorage ---
+const TRANSACTIONS_KEY = "app_transactions";
+const GENERAL_INVENTORY_KEY = "app_general_inventory"; // Dedicated key for general shop items
+const MOBILE_MONEY_FLOAT_KEY = "app_mobile_money_float"; // Dedicated key for mobile money float
+const LAST_SUMMARY_RESET_TIMESTAMP_KEY = "app_last_summary_reset_timestamp";
+const DAILY_SUMMARY_DATA_KEY = "app_daily_summary_data";
+const PHYSICAL_CASH_KEY = "app_physical_cash"; // NEW: Dedicated key for total physical cash
+
+// MOCK UGANDAN MOBILE MONEY COMMISSION TIERS
+// IMPORTANT: These are example values. Replace with actual, up-to-date rates for MTN/Airtel Uganda.
+const UGANDA_COMMISSION_TIERS = {
+  MTN: [
+    // Example MTN (replace with actual)
+    {
+      minAmount: 0,
+      maxAmount: 500,
+      withdrawalCommission: 100,
+      depositCommission: 50,
+    },
+    {
+      minAmount: 501,
+      maxAmount: 2500,
+      withdrawalCommission: 200,
+      depositCommission: 100,
+    },
+    {
+      minAmount: 2501,
+      maxAmount: 5000,
+      withdrawalCommission: 300,
+      depositCommission: 150,
+    },
+    {
+      minAmount: 5001,
+      maxAmount: 10000,
+      withdrawalCommission: 500,
+      depositCommission: 200,
+    },
+    {
+      minAmount: 10001,
+      maxAmount: 20000,
+      withdrawalCommission: 700,
+      depositCommission: 250,
+    },
+    {
+      minAmount: 20001,
+      maxAmount: 30000,
+      withdrawalCommission: 900,
+      depositCommission: 300,
+    },
+    {
+      minAmount: 30001,
+      maxAmount: 40000,
+      withdrawalCommission: 1100,
+      depositCommission: 350,
+    },
+    {
+      minAmount: 40001,
+      maxAmount: 50000,
+      withdrawalCommission: 1300,
+      depositCommission: 400,
+    },
+    {
+      minAmount: 50001,
+      maxAmount: 100000,
+      withdrawalCommission: 1500,
+      depositCommission: 500,
+    },
+    {
+      minAmount: 100001,
+      maxAmount: 200000,
+      withdrawalCommission: 2000,
+      depositCommission: 700,
+    },
+    {
+      minAmount: 200001,
+      maxAmount: 500000,
+      withdrawalCommission: 2500,
+      depositCommission: 900,
+    },
+    {
+      minAmount: 500001,
+      maxAmount: 1000000,
+      withdrawalCommission: 3000,
+      depositCommission: 1200,
+    },
+    {
+      minAmount: 1000001,
+      maxAmount: Infinity,
+      withdrawalCommission: 3500,
+      depositCommission: 1500,
+    }, // Max tier
+  ],
+  Airtel: [
+    // Example Airtel (replace with actual)
+    {
+      minAmount: 0,
+      maxAmount: 500,
+      withdrawalCommission: 90,
+      depositCommission: 45,
+    },
+    {
+      minAmount: 501,
+      maxAmount: 2500,
+      withdrawalCommission: 180,
+      depositCommission: 90,
+    },
+    {
+      minAmount: 2501,
+      maxAmount: 5000,
+      withdrawalCommission: 270,
+      depositCommission: 135,
+    },
+    {
+      minAmount: 5001,
+      maxAmount: 10000,
+      withdrawalCommission: 450,
+      depositCommission: 180,
+    },
+    {
+      minAmount: 10001,
+      maxAmount: 20000,
+      withdrawalCommission: 630,
+      depositCommission: 225,
+    },
+    {
+      minAmount: 20001,
+      maxAmount: 30000,
+      withdrawalCommission: 810,
+      depositCommission: 270,
+    },
+    {
+      minAmount: 30001,
+      maxAmount: 40000,
+      withdrawalCommission: 990,
+      depositCommission: 315,
+    },
+    {
+      minAmount: 40001,
+      maxAmount: 50000,
+      withdrawalCommission: 1170,
+      depositCommission: 360,
+    },
+    {
+      minAmount: 50001,
+      maxAmount: 100000,
+      withdrawalCommission: 1350,
+      depositCommission: 450,
+    },
+    {
+      minAmount: 100001,
+      maxAmount: 200000,
+      withdrawalCommission: 1800,
+      depositCommission: 630,
+    },
+    {
+      minAmount: 200001,
+      maxAmount: 500000,
+      withdrawalCommission: 2250,
+      depositCommission: 810,
+    },
+    {
+      minAmount: 500001,
+      maxAmount: 1000000,
+      withdrawalCommission: 2700,
+      depositCommission: 1080,
+    },
+    {
+      minAmount: 1000001,
+      maxAmount: Infinity,
+      withdrawalCommission: 3150,
+      depositCommission: 1350,
+    },
+  ],
+  Africell: [
+    // Define Africell tiers here (placeholder for now)
+    {
+      minAmount: 0,
+      maxAmount: Infinity,
+      withdrawalCommission: 0,
+      depositCommission: 0,
+    },
+  ],
+};
 
 /**
- * Save a new transaction (sell or restock)
- * This function also updates the inventory.
- * @param {'sell' | 'restock'} type
- * @param {{ itemName: string, quantity: number, costPrice?: number, sellingPrice?: number }} data
- * @returns {Promise<boolean>} True if transaction saved and inventory updated, false otherwise.
+ * Calculates the commission for a given network, amount, and transaction type.
+ * @param {string} networkName - The name of the mobile money network (e.g., "MTN", "Airtel").
+ * @param {number} amount - The transaction amount.
+ * @param {'withdrawal' | 'deposit'} transactionType - The type of mobile money transaction.
+ * @returns {number} The calculated commission.
  */
-export async function saveTransaction(type, data = {}) {
-  try {
-    const newTransaction = {
-      id: Date.now().toString(),
-      type,
-      itemName: data.itemName,
-      quantity: data.quantity,
-      timestamp: new Date().toISOString(),
-      costPrice: data.costPrice !== undefined ? data.costPrice : 0,
-      sellingPrice: data.sellingPrice !== undefined ? data.sellingPrice : 0,
-    };
+export const calculateCommission = (networkName, amount, transactionType) => {
+  // Normalize networkName to match keys if necessary (e.g., "mtn mobile money" -> "MTN")
+  const normalizedNetworkName =
+    Object.keys(UGANDA_COMMISSION_TIERS).find((key) =>
+      networkName.toLowerCase().includes(key.toLowerCase())
+    ) || networkName.trim(); // Fallback to trimmed name if no match
 
-    const existingTransactionsData = await AsyncStorage.getItem(
-      TRANSACTIONS_KEY
-    );
-    let transactions = [];
-    try {
-      transactions = existingTransactionsData
-        ? JSON.parse(existingTransactionsData)
-        : [];
-    } catch (parseError) {
-      console.warn(
-        "Failed to parse existing transactions, resetting data:",
-        parseError
-      );
-      await AsyncStorage.removeItem(TRANSACTIONS_KEY);
+  const specificTiers = UGANDA_COMMISSION_TIERS[normalizedNetworkName] || [];
+
+  if (specificTiers.length === 0) {
+    console.warn(`No commission tiers found for network: ${networkName}`);
+    return 0; // No commission if network not found
+  }
+
+  for (const tier of specificTiers) {
+    if (amount >= tier.minAmount && amount <= tier.maxAmount) {
+      if (transactionType === "withdrawal") {
+        return tier.withdrawalCommission || 0;
+      } else if (transactionType === "deposit") {
+        return tier.depositCommission || 0;
+      }
+    }
+  }
+
+  return 0; // Return 0 if no tier matches (shouldn't happen with Infinity tier)
+};
+
+// --- Helper to get data ---
+const getData = async (key) => {
+  try {
+    const jsonValue = await AsyncStorage.getItem(key);
+    return jsonValue != null ? JSON.parse(jsonValue) : null;
+  } catch (e) {
+    console.error(`Error reading data from ${key}:`, e);
+    return null;
+  }
+};
+
+// --- Helper to save data ---
+const saveData = async (key, value) => {
+  try {
+    const jsonValue = JSON.stringify(value);
+    await AsyncStorage.setItem(key, jsonValue);
+    return true;
+  } catch (e) {
+    console.error(`Error saving data to ${key}:`, e);
+    return false;
+  }
+};
+
+// --- Transaction Functions ---
+export const getTransactions = async () => {
+  return (await getData(TRANSACTIONS_KEY)) || [];
+};
+
+/**
+ * Saves a transaction and updates the relevant inventory/float.
+ * @param {object} transactionData - Details of the transaction (type, itemName, quantity, customer, etc.)
+ */
+export async function saveTransaction(transactionData) {
+  try {
+    let transactions = await getTransactions();
+    if (!Array.isArray(transactions)) {
       transactions = [];
     }
 
-    transactions.push(newTransaction);
-    await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+    const newTransaction = {
+      id: Date.now().toString(), // Simple unique ID
+      timestamp: Date.now(),
+      ...transactionData,
+    };
 
-    let inventory = await getInventory();
+    console.log(
+      "Constructed newTransaction in saveTransaction:",
+      newTransaction
+    ); // Debug log
 
-    const existingItemIndex = inventory.findIndex(
-      (item) => item.itemName.toLowerCase() === data.itemName.toLowerCase()
-    );
-
-    if (type === "restock") {
-      if (existingItemIndex > -1) {
-        inventory[existingItemIndex].currentStock =
-          (inventory[existingItemIndex].currentStock || 0) + data.quantity;
-      } else {
-        inventory.push({
-          id:
-            Date.now().toString() +
-            "-inv-" +
-            Math.random().toString(36).substring(2, 9),
-          itemName: data.itemName,
-          currentStock: data.quantity,
-          costPricePerUnit: data.costPrice || 0,
-          sellingPricePerUnit: data.sellingPrice || 0,
-        });
-      }
-    } else if (type === "sell") {
-      if (existingItemIndex > -1) {
-        if (inventory[existingItemIndex].currentStock >= data.quantity) {
-          inventory[existingItemIndex].currentStock -= data.quantity;
-        } else {
-          console.warn("Insufficient stock for sale:", data.itemName);
-          return false;
-        }
-      } else {
-        console.warn("Item not found in inventory for sale:", data.itemName);
-        return false;
-      }
-    }
-
-    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inventory));
-    return true;
-  } catch (error) {
-    console.error("Critical error in saveTransaction:", error);
-    return false;
-  }
-}
-
-/**
- * Get all transactions
- * @returns {Promise<Array>}
- */
-export async function getTransactions() {
-  try {
-    const data = await AsyncStorage.getItem(TRANSACTIONS_KEY);
-    if (!data) {
-      return [];
-    }
-    let parsedData = [];
-    try {
-      parsedData = JSON.parse(data);
-    } catch (parseError) {
-      console.error(
-        "JSON Parse error in getTransactions, clearing corrupted data:",
-        parseError
+    // --- ADDITION FOR MOBILE MONEY COMMISSION ---
+    if (newTransaction.isMobileMoney && newTransaction.type === "sell") {
+      // Assuming itemName here refers to the network (e.g., "MTN", "Airtel")
+      const commission = calculateCommission(
+        newTransaction.itemName,
+        newTransaction.quantity,
+        "withdrawal" // Explicitly pass transaction type for calculation
       );
-      await AsyncStorage.removeItem(TRANSACTIONS_KEY);
-      return [];
+      newTransaction.commissionEarned = commission;
+    } else if (
+      newTransaction.isMobileMoney &&
+      newTransaction.type === "restock"
+    ) {
+      const commission = calculateCommission(
+        newTransaction.itemName,
+        newTransaction.quantity,
+        "deposit" // Explicitly pass transaction type for calculation
+      );
+      newTransaction.commissionEarned = commission;
     }
-    return parsedData;
-  } catch (error) {
-    console.error("Error getting transactions from AsyncStorage:", error);
-    return [];
-  }
-}
+    // --- END ADDITION ---
 
-/**
- * Clear all transactions (for dev/reset)
- */
-export async function clearTransactions() {
-  try {
-    await AsyncStorage.removeItem(TRANSACTIONS_KEY);
-  } catch (error) {
-    console.error("Error clearing transactions:", error);
-  }
-}
+    console.log("Transactions array BEFORE push:", transactions); // Debug log
+    transactions.push(newTransaction);
+    console.log("Transactions array AFTER push:", transactions); // Debug log
 
-/**
- * Save or update an inventory item.
- * If item has an id, it updates an existing item. Otherwise, it adds a new one.
- * @param {object} item - The inventory item to save/update
- * @param {string} item.itemName - Name of the item
- * @param {number} item.currentStock - Current stock quantity
- * @param {number} item.costPricePerUnit - Cost price per unit
- * @param {number} item.sellingPricePerUnit - Selling price per unit
- * @param {string} [item.id] - Optional ID for existing items
- */
-export async function saveInventoryItem(item) {
-  try {
-    let inventory = await getInventory();
-    if (item.id) {
-      const index = inventory.findIndex((invItem) => invItem.id === item.id);
-      if (index > -1) {
-        inventory[index] = { ...inventory[index], ...item };
+    await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+    console.log(
+      "Stringified transactions for saving:",
+      JSON.stringify(transactions)
+    ); // Debug log
+    console.log("Transaction saved to TRANSACTIONS_KEY:", newTransaction);
+
+    // --- Update Inventory/Float based on business type ---
+    if (newTransaction.isMobileMoney) {
+      const currentFloat = await getFloatEntries();
+      const existingFloatIndex = currentFloat.findIndex(
+        (item) =>
+          item && // ADDED: Ensure item is not null/undefined
+          item.itemName && // ADDED: Ensure item.itemName exists
+          newTransaction.itemName && // ADDED: Ensure newTransaction.itemName exists
+          item.itemName.toLowerCase() === newTransaction.itemName.toLowerCase()
+      );
+
+      if (existingFloatIndex !== -1) {
+        const updatedFloat = [...currentFloat];
+        const floatToUpdate = { ...updatedFloat[existingFloatIndex] };
+
+        if (newTransaction.type === "sell") {
+          // Withdrawal
+          floatToUpdate.currentStock -= newTransaction.quantity; // Subtract transaction amount from float
+        } else if (newTransaction.type === "restock") {
+          // Deposit
+          floatToUpdate.currentStock += newTransaction.quantity; // Add transaction amount to float
+        }
+        floatToUpdate.lastUpdated = Date.now();
+        updatedFloat[existingFloatIndex] = floatToUpdate;
+        await saveData(MOBILE_MONEY_FLOAT_KEY, updatedFloat);
+        console.log("Mobile Money Float updated:", floatToUpdate);
       } else {
-        console.warn("Attempted to update item not found:", item.itemName);
-        const newItem = {
-          id:
-            Date.now().toString() +
-            "-inv-" +
-            Math.random().toString(36).substring(2, 9),
-          ...item,
+        console.warn(
+          `Transaction for unknown float network "${newTransaction.itemName}" recorded. Please ensure it's added via ManageFloat.`
+        );
+        const newFloatEntry = {
+          itemName: newTransaction.itemName,
+          currentStock:
+            newTransaction.type === "sell"
+              ? -newTransaction.quantity
+              : newTransaction.quantity, // Initial stock change
+          costPricePerUnit: 0,
+          sellingPricePerUnit: 0,
+          lastUpdated: Date.now(),
         };
-        delete newItem.id;
-        inventory.push(newItem);
+        await saveData(MOBILE_MONEY_FLOAT_KEY, [
+          ...currentFloat,
+          newFloatEntry,
+        ]);
+        console.log("New Float Entry created:", newFloatEntry);
       }
     } else {
-      const newItem = {
-        id:
-          Date.now().toString() +
-          "-inv-" +
-          Math.random().toString(36).substring(2, 9),
-        ...item,
-      };
-      inventory.push(newItem);
-    }
-    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inventory));
-  } catch (error) {
-    console.error("Error saving inventory item:", error);
-  }
-}
-
-/**
- * Get all inventory items.
- * @returns {Promise<Array>}
- */
-export async function getInventory() {
-  try {
-    const data = await AsyncStorage.getItem(INVENTORY_KEY);
-    if (!data) {
-      return [];
-    }
-    let parsedData = [];
-    try {
-      parsedData = JSON.parse(data);
-    } catch (parseError) {
-      console.error(
-        "JSON Parse error in getInventory, clearing corrupted data:",
-        parseError
+      // General Shop Inventory
+      const currentInventory = await getGeneralInventoryItems();
+      const existingItemIndex = currentInventory.findIndex(
+        (item) =>
+          item && // ADDED: Ensure item is not null/undefined
+          item.itemName && // ADDED: Ensure item.itemName exists
+          newTransaction.itemName && // ADDED: Ensure newTransaction.itemName exists
+          item.itemName.toLowerCase() === newTransaction.itemName.toLowerCase()
       );
-      await AsyncStorage.removeItem(INVENTORY_KEY);
-      return [];
+
+      if (existingItemIndex !== -1) {
+        const updatedInventory = [...currentInventory];
+        const itemToUpdate = { ...updatedInventory[existingItemIndex] };
+
+        if (newTransaction.type === "sell") {
+          itemToUpdate.currentStock -= newTransaction.quantity; // 'quantity' is amount of items sold
+        } else if (newTransaction.type === "restock") {
+          itemToUpdate.currentStock += newTransaction.quantity; // 'quantity' is amount of items restocked
+        }
+        itemToUpdate.lastUpdated = Date.now();
+        updatedInventory[existingItemIndex] = itemToUpdate;
+        await saveData(GENERAL_INVENTORY_KEY, updatedInventory);
+        console.log("General Inventory item updated:", itemToUpdate);
+      } else {
+        console.warn(
+          `Transaction for unknown general inventory item "${newTransaction.itemName}" recorded. Please ensure it's added via ManageItem.`
+        );
+        const newItem = {
+          itemName: newTransaction.itemName,
+          currentStock: newTransaction.quantity, // Initial stock is the quantity from this transaction
+          costPricePerUnit: newTransaction.costPrice || 0, // Use costPrice from transaction, or 0
+          sellingPricePerUnit: newTransaction.sellingPrice || 0, // Use sellingPrice from transaction, or 0
+          createdAt: Date.now(), // Added for consistency
+          lastUpdated: Date.now(),
+        };
+        await saveData(GENERAL_INVENTORY_KEY, [...currentInventory, newItem]);
+        console.log("New General Inventory item created:", newItem);
+      }
     }
-    return parsedData;
-  } catch (error) {
-    console.error("Error getting inventory from AsyncStorage:", error);
-    return [];
-  }
-}
 
-/**
- * Delete an inventory item by ID.
- * @param {string} id - The ID of the item to delete.
- */
-export async function deleteInventoryItem(id) {
-  try {
-    let inventory = await getInventory();
-    inventory = inventory.filter((item) => item.id !== id);
-    await AsyncStorage.setItem(INVENTORY_KEY, JSON.stringify(inventory));
-  } catch (error) {
-    console.error("Error deleting inventory item:", error);
-  }
-}
-
-/**
- * Clear all inventory items (for dev/reset).
- */
-export async function clearInventory() {
-  try {
-    await AsyncStorage.removeItem(INVENTORY_KEY);
-  } catch (error) {
-    console.error("Error clearing inventory:", error);
-  }
-}
-
-/**
- * Sets the timestamp for the last summary reset.
- * @param {number} timestamp - The timestamp to save (e.g., Date.now()).
- */
-export async function setLastSummaryResetTimestamp(timestamp) {
-  try {
-    await AsyncStorage.setItem(LAST_SUMMARY_RESET_KEY, timestamp.toString());
-  } catch (error) {
-    console.error("Error setting last summary reset timestamp:", error);
-  }
-}
-
-/**
- * Gets the timestamp for the last summary reset.
- * @returns {Promise<number>} The timestamp, or 0 if never set.
- */
-export async function getLastSummaryResetTimestamp() {
-  try {
-    const timestamp = await AsyncStorage.getItem(LAST_SUMMARY_RESET_KEY);
-    return timestamp ? parseInt(timestamp) : 0;
-  } catch (error) {
-    console.error("Error getting last summary reset timestamp:", error);
-    return 0;
-  }
-}
-
-/**
- * Saves the computed daily summary data.
- * @param {object} summaryData - The summary object to save.
- */
-export async function saveDailySummaryData(summaryData) {
-  try {
-    await AsyncStorage.setItem(
-      DAILY_SUMMARY_DATA_KEY,
-      JSON.stringify(summaryData)
+    // --- NEW: Update Physical Cash based on transaction type ---
+    let currentPhysicalCash = await getPhysicalCash();
+    if (newTransaction.type === "sell") {
+      // Selling (either general item or mobile money withdrawal)
+      currentPhysicalCash += newTransaction.amount; // Cash increases by transaction amount
+      // If mobile money withdrawal, also add the commission earned to physical cash
+      if (newTransaction.isMobileMoney && newTransaction.commissionEarned) {
+        currentPhysicalCash += newTransaction.commissionEarned;
+      }
+    } else if (newTransaction.type === "restock") {
+      // Restocking (either general item or mobile money deposit)
+      currentPhysicalCash -= newTransaction.amount; // Cash decreases by amount spent on restock
+      // If mobile money deposit, also add the commission earned to physical cash
+      // NOTE: For deposits, the user *receives* commission, so their physical cash increases.
+      if (newTransaction.isMobileMoney && newTransaction.commissionEarned) {
+        currentPhysicalCash += newTransaction.commissionEarned;
+      }
+    }
+    // Handle cases where amount might be calculated differently (e.g., profit for general items)
+    // For general item 'sell', newTransaction.amount is usually the sellingPrice * quantity
+    // For general item 'restock', newTransaction.amount is usually the costPrice * quantity
+    await savePhysicalCash(currentPhysicalCash);
+    console.log(
+      "Physical cash updated after transaction:",
+      currentPhysicalCash
     );
+    // --- END NEW PHYSICAL CASH UPDATE ---
   } catch (error) {
-    console.error("Error saving daily summary data:", error);
+    console.error("Error saving transaction:", error);
+    throw error;
   }
 }
 
-/**
- * Gets the computed daily summary data.
- * @returns {Promise<object | null>} The summary object, or null if not found.
- */
-export async function getDailySummaryData() {
+export const clearTransactions = async () => {
+  return await saveData(TRANSACTIONS_KEY, []);
+};
+
+// --- Summary Functions (Existing) ---
+export const setLastSummaryResetTimestamp = async (timestamp) => {
+  return await saveData(LAST_SUMMARY_RESET_TIMESTAMP_KEY, timestamp);
+};
+
+export const getLastSummaryResetTimestamp = async () => {
+  return (await getData(LAST_SUMMARY_RESET_TIMESTAMP_KEY)) || 0; // Default to 0 (epoch)
+};
+
+export const saveDailySummaryData = async (data) => {
+  return await saveData(DAILY_SUMMARY_DATA_KEY, data);
+};
+
+export const getDailySummaryData = async () => {
+  return await getData(DAILY_SUMMARY_DATA_KEY);
+};
+
+// --- GENERAL SHOP INVENTORY MANAGEMENT FUNCTIONS (Renamed/New) ---
+
+export const getGeneralInventoryItems = async () => {
+  return (await getData(GENERAL_INVENTORY_KEY)) || [];
+};
+
+export const saveGeneralInventoryItem = async (itemToSave) => {
   try {
-    const data = await AsyncStorage.getItem(DAILY_SUMMARY_DATA_KEY);
-    if (!data) {
-      return null;
-    }
-    try {
-      return JSON.parse(data);
-    } catch (parseError) {
-      console.error(
-        "JSON Parse error in getDailySummaryData, clearing corrupted data:",
-        parseError
+    let currentInventory = await getGeneralInventoryItems(); // Get existing items
+
+    let updatedInventory;
+    if (
+      itemToSave.itemName &&
+      currentInventory.find(
+        (item) =>
+          item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()
+      )
+    ) {
+      // If itemToSave has an itemName and an item with that name already exists, it's an update
+      updatedInventory = currentInventory.map((item) =>
+        item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()
+          ? { ...item, ...itemToSave, lastUpdated: Date.now() }
+          : item
       );
-      await AsyncStorage.removeItem(DAILY_SUMMARY_DATA_KEY);
-      return null;
+      console.log(
+        "Updating existing general inventory item:",
+        itemToSave.itemName
+      );
+    } else {
+      // Otherwise, it's a new item
+      const newItem = {
+        id: Date.now().toString(), // Simple unique ID for new items
+        itemName: itemToSave.itemName,
+        currentStock: itemToSave.currentStock || 0, // Default to 0 if not provided
+        costPricePerUnit: itemToSave.costPricePerUnit || 0,
+        sellingPricePerUnit: itemToSave.sellingPricePerUnit || 0,
+        createdAt: Date.now(),
+        lastUpdated: Date.now(),
+      };
+      updatedInventory = [...currentInventory, newItem];
+      console.log("Adding new general inventory item:", newItem.itemName);
+    }
+
+    await saveData(GENERAL_INVENTORY_KEY, updatedInventory);
+    console.log("General inventory item saved successfully!");
+    return true;
+  } catch (error) {
+    console.error("Error saving general inventory item:", error);
+    throw error; // Re-throw the error for the calling screen to handle
+  }
+};
+
+// EXPORT saveInventoryItem for ManageItemScreen
+// This function now acts as an alias or a direct call to saveGeneralInventoryItem
+export const saveInventoryItem = saveGeneralInventoryItem;
+
+export const updateGeneralInventoryItem = async (updatedItem) => {
+  try {
+    const currentInventory = await getGeneralInventoryItems();
+    const itemIndex = currentInventory.findIndex(
+      (item) =>
+        item.itemName.toLowerCase() === updatedItem.itemName.toLowerCase()
+    );
+
+    if (itemIndex === -1) {
+      console.warn(
+        `Attempted to update non-existent general inventory item: ${updatedItem.itemName}`
+      );
+      return false;
+    }
+
+    const newInventory = [...currentInventory];
+    newInventory[itemIndex] = {
+      ...newInventory[itemIndex],
+      ...updatedItem,
+      lastUpdated: Date.now(),
+    };
+    await saveData(GENERAL_INVENTORY_KEY, newInventory);
+    console.log(`General inventory item '${updatedItem.itemName}' updated.`);
+    return true;
+  } catch (error) {
+    console.error("Error updating general inventory item:", error);
+    return false;
+  }
+};
+
+export const deleteGeneralInventoryItem = async (itemName) => {
+  try {
+    const currentInventory = await getGeneralInventoryItems();
+    const filteredInventory = currentInventory.filter(
+      (item) => item.itemName.toLowerCase() !== itemName.toLowerCase()
+    );
+    await saveData(GENERAL_INVENTORY_KEY, filteredInventory);
+    console.log(`General inventory item '${itemName}' deleted.`);
+    return true;
+  } catch (error) {
+    console.error("Error deleting general inventory item:", error);
+    return false;
+  }
+};
+
+export const clearGeneralInventory = async () => {
+  return await saveData(GENERAL_INVENTORY_KEY, []);
+};
+
+// --- MOBILE MONEY FLOAT MANAGEMENT FUNCTIONS (These were already for E-Value) ---
+
+export const getFloatEntries = async () => {
+  return (await getData(MOBILE_MONEY_FLOAT_KEY)) || [];
+};
+
+export const saveFloatEntry = async (newFloat) => {
+  try {
+    const currentFloat = await getFloatEntries();
+    const existingFloatIndex = currentFloat.findIndex(
+      (entry) =>
+        entry.itemName.toLowerCase() === newFloat.itemName.toLowerCase()
+    );
+
+    if (existingFloatIndex !== -1) {
+      const updatedFloat = [...currentFloat];
+      updatedFloat[existingFloatIndex] = {
+        ...updatedFloat[existingFloatIndex],
+        ...newFloat,
+        lastUpdated: Date.now(),
+      };
+      await saveData(MOBILE_MONEY_FLOAT_KEY, updatedFloat);
+      console.log(`Float entry '${newFloat.itemName}' updated.`);
+      return true;
+    } else {
+      const floatToSave = [
+        ...currentFloat,
+        { ...newFloat, id: Date.now().toString(), lastUpdated: Date.now() }, // Add ID for new entries
+      ];
+      await saveData(MOBILE_MONEY_FLOAT_KEY, floatToSave);
+      console.log(`Float entry '${newFloat.itemName}' added.`);
+      return true;
     }
   } catch (error) {
-    console.error("Error getting daily summary data:", error);
-    return null;
+    console.error("Error saving float entry:", error);
+    return false;
   }
-}
+};
+
+export const updateFloatEntry = async (updatedFloat) => {
+  try {
+    const currentFloat = await getFloatEntries();
+    const floatIndex = currentFloat.findIndex(
+      (entry) =>
+        entry.itemName.toLowerCase() === updatedFloat.itemName.toLowerCase()
+    );
+
+    if (floatIndex === -1) {
+      console.warn(
+        `Attempted to update non-existent float entry: ${updatedFloat.itemName}`
+      );
+      return false;
+    }
+
+    const newFloat = [...currentFloat];
+    newFloat[floatIndex] = {
+      ...newFloat[floatIndex],
+      ...updatedFloat,
+      lastUpdated: Date.now(),
+    };
+    await saveData(MOBILE_MONEY_FLOAT_KEY, newFloat);
+    console.log(`Float entry '${updatedFloat.itemName}' updated.`);
+    return true;
+  } catch (error) {
+    console.error("Error updating float entry:", error);
+    return false;
+  }
+};
+
+export const deleteFloatEntry = async (itemName) => {
+  try {
+    const currentFloat = await getFloatEntries();
+    const filteredFloat = currentFloat.filter(
+      (entry) => entry.itemName.toLowerCase() !== itemName.toLowerCase()
+    );
+    await saveData(MOBILE_MONEY_FLOAT_KEY, filteredFloat);
+    console.log(`Float entry '${itemName}' deleted.`);
+    return true;
+  } catch (error) {
+    console.error("Error deleting float entry:", error);
+    return false;
+  }
+};
+
+export const clearFloatEntries = async () => {
+  return await saveData(MOBILE_MONEY_FLOAT_KEY, []);
+};
+
+// --- NEW: Dedicated Physical Cash Functions ---
+
+export const getPhysicalCash = async () => {
+  try {
+    const value = await AsyncStorage.getItem(PHYSICAL_CASH_KEY);
+    // Parse as float, default to 0 if null or invalid
+    return value != null ? parseFloat(value) : 0;
+  } catch (e) {
+    console.error("Failed to fetch physical cash:", e);
+    return 0; // Return 0 on error
+  }
+};
+
+export const savePhysicalCash = async (amount) => {
+  try {
+    const stringValue = amount.toString();
+    await AsyncStorage.setItem(PHYSICAL_CASH_KEY, stringValue);
+    return true;
+  } catch (e) {
+    console.error("Failed to save physical cash:", e);
+    throw e; // Re-throw to be handled by calling component
+  }
+};
+
+export const clearPhysicalCash = async () => {
+  return await savePhysicalCash(0); // Set physical cash to 0
+};
+
+// Optional: For complete data clearing (for development/testing)
+export const clearAllStorage = async () => {
+  try {
+    await AsyncStorage.clear();
+    console.log("All AsyncStorage data cleared successfully.");
+  } catch (e) {
+    console.error("Error clearing all storage:", e);
+  }
+};
