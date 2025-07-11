@@ -189,6 +189,19 @@ const translations = {
       "Consider adding this item to your general inventory.",
     float_not_updated_warning: "Float not updated.",
     consider_adding_float_entry: "Consider adding a float entry for {network}.",
+    speak_now: "Speak now",
+    listening: "Listening",
+    listening_for_field: "Listening for {field}...", // New key
+    networkName: "Network Name", // Used for the dynamic 'field' in listening_for_field
+    transactionAmount: "Transaction Amount", // Used for the dynamic 'field'
+    customerIdentifier: "Customer Identifier", // Used for the dynamic 'field'
+    voice_recognition_error: "Voice Recognition Error",
+    try_again_or_check_settings: "Please try again or check device settings.",
+    voice_start_error: "Error starting voice input",
+    check_mic_permissions: "Check microphone permissions.",
+    invalid_amount_voice: "Invalid amount spoken", // New key
+    please_speak_clearly:
+      "Please speak clearly, e.g., 'five thousand' or '5000'.", // New key
 
     // --- Reports Screen ---
     reports_title: "Reports",
@@ -382,6 +395,20 @@ const translations = {
     insufficient_float: "Eya float tennamala ku network eno.",
     update_item_stock_error: "Wabaddewo ensobi mu kuteekawo ebyamaguzi.",
     update_float_error: "Wabaddewo ensobi mu kuteekawo float.",
+    speak_now: "Vuga kaakano",
+    listening: "Nkuwulira",
+    listening_for_field: "Nkuwulira {field}...", // New key
+    networkName: "Erinnya lya Network", // Used for the dynamic 'field'
+    transactionAmount: "Omuwendo gw'Enkola", // Used for the dynamic 'field'
+    customerIdentifier: "Erinnya/Namba ya Kasitoma", // Used for the dynamic 'field'
+    voice_recognition_error: "Waliwo Ekikyamu Mu Kuwulira Ekigambo",
+    try_again_or_check_settings:
+      "Geraako omulala oba kola ku setingi za telefone.",
+    voice_start_error: "Waliwo ekikyamu mu kutandika okuwulira",
+    check_mic_permissions: "Kola ku lusa lwa microphone.",
+    invalid_amount_voice: "Omuwendo teguwuliddwa bulungi", // New key
+    please_speak_clearly:
+      "Mwattu vuga bulungi, gamba, 'mitwalo etaano' oba '5000'.", // New key
 
     // --- Reports Screen ---
     reports_title: "Lipooti",

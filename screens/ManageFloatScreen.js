@@ -26,13 +26,13 @@ import {
   saveFloatEntry,
   updateFloatEntry,
   deleteFloatEntry,
-  // NEW: Import physical cash functions
   getPhysicalCash,
   savePhysicalCash,
+  // NEW: Import the MIN_PHYSICAL_CASH_REQUIRED for display purposes
+  MIN_PHYSICAL_CASH_REQUIRED,
+  // MIN_FLOAT_REQUIRED_PER_NETWORK, // You might want to import this if you plan to display it
   // clearAllStorage // <-- For testing purposes, uncomment if needed
 } from "../storage/transactionStorage";
-
-// Removed PHYSICAL_CASH_ITEM_NAME constant as it's no longer a 'float entry' type
 
 export default function ManageFloatScreen() {
   const navigation = useNavigation();
@@ -40,13 +40,13 @@ export default function ManageFloatScreen() {
   const { t } = useLanguage();
 
   const [floatEntries, setFloatEntries] = useState([]); // This will be for E-Value/Mobile Money floats
-  const [totalPhysicalCash, setTotalPhysicalCash] = useState(0); // NEW: Dedicated state for physical cash
-  const [totalEValueFloat, setTotalEValueFloat] = useState(0); // NEW: Calculated total for mobile money floats
+  const [totalPhysicalCash, setTotalPhysicalCash] = useState(0); // Dedicated state for physical cash
+  const [totalEValueFloat, setTotalEValueFloat] = useState(0); // Calculated total for mobile money floats
 
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false); // For adding/editing E-Value floats
 
-  // NEW: State for the dedicated physical cash input modal
+  // State for the dedicated physical cash input modal
   const [isPhysicalCashModalVisible, setIsPhysicalCashModalVisible] =
     useState(false);
   const [physicalCashInput, setPhysicalCashInput] = useState("");
@@ -98,20 +98,26 @@ export default function ManageFloatScreen() {
         storedPhysicalCash
       );
 
-      // --- PROMPT LOGIC FOR PHYSICAL CASH ---
-      if (storedPhysicalCash === 0) {
+      // --- MODIFIED LOGIC FOR PHYSICAL CASH ---
+      // Show modal if physical cash is zero or below the minimum required
+      if (storedPhysicalCash < MIN_PHYSICAL_CASH_REQUIRED) {
         setIsPhysicalCashModalVisible(true);
-        setPhysicalCashInput(""); // Clear input field if previously typed
+        // Pre-fill input if there's some cash, otherwise keep it empty for new entry
+        setPhysicalCashInput(
+          storedPhysicalCash > 0 ? storedPhysicalCash.toString() : ""
+        );
         Toast.show({
           type: "info",
-          text1: t("physical_cash_zero_title"),
-          text2: t("physical_cash_zero_message"),
+          text1: t("physical_cash_low_title"), // New translation key
+          text2: t("physical_cash_low_message", {
+            minCash: MIN_PHYSICAL_CASH_REQUIRED.toLocaleString(),
+          }), // New translation key
           visibilityTime: 6000,
         });
       } else {
-        setIsPhysicalCashModalVisible(false); // Ensure modal is closed if cash > 0
+        setIsPhysicalCashModalVisible(false); // Ensure modal is closed if cash meets requirement
       }
-      // --- END PROMPT LOGIC ---
+      // --- END MODIFIED LOGIC ---
     } catch (error) {
       console.error("ManageFloatScreen: Error loading all float data:", error);
       Toast.show({
@@ -121,7 +127,7 @@ export default function ManageFloatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [t]); // Added t as a dependency for useCallback
 
   useFocusEffect(
     useCallback(() => {
@@ -226,56 +232,60 @@ export default function ManageFloatScreen() {
             }
           },
         },
-      ],
-      { cancelable: true }
+      ]
     );
   };
 
   // --- Handlers for Physical Cash ---
   const handleSavePhysicalCash = async () => {
-    const parsedAmount = parseFloat(physicalCashInput);
-    if (isNaN(parsedAmount) || parsedAmount < 0) {
+    const parsedCash = parseFloat(physicalCashInput);
+    if (isNaN(parsedCash) || parsedCash < 0) {
       Toast.show({ type: "error", text1: t("valid_cash_amount_required") });
       return;
     }
 
     setLoading(true);
     try {
-      await savePhysicalCash(parsedAmount);
+      await savePhysicalCash(parsedCash);
       Toast.show({
         type: "success",
         text1: t("physical_cash_updated_success"),
       });
       setIsPhysicalCashModalVisible(false);
-      loadAllFloatData(); // Reload all data to update the display
+      loadAllFloatData(); // Reload to update displayed physical cash and re-evaluate minimum
     } catch (error) {
-      console.error("Error saving physical cash:", error);
-      Toast.show({ type: "error", text1: t("error_saving_physical_cash") });
+      console.error("ManageFloatScreen: Error saving physical cash:", error);
+      Toast.show({
+        type: "error",
+        text1: t("error_saving_physical_cash"),
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const renderItem = ({ item }) => (
+  const renderFloatItem = ({ item }) => (
     <View style={styles.itemCard}>
       <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>{item.itemName}</Text>
+        <Text style={styles.itemName}>
+          {t("network")}: {item.itemName}
+        </Text>
         <Text style={styles.itemStock}>
-          {t("current_float")}: UGX {item.currentStock.toLocaleString()}
+          {t("current_e_value_float")}: {item.currentStock.toLocaleString()} UGX
         </Text>
       </View>
       <View style={styles.itemActions}>
         <TouchableOpacity
-          style={[styles.actionButton, styles.editButton]}
+          style={styles.editButton}
           onPress={() => handleAddEditFloat(item)}
         >
-          <Ionicons name="create-outline" size={20} color="#fff" />
+          <Ionicons name="pencil" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.actionButton, styles.deleteButton]}
+          style={styles.deleteButton}
           onPress={() => handleDeleteEValueFloat(item)}
         >
-          <Ionicons name="trash-outline" size={20} color="#fff" />
+          <Ionicons name="trash" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
     </View>
@@ -284,45 +294,52 @@ export default function ManageFloatScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("manage_float")}</Text>
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => handleAddEditFloat()}
+        >
+          <Ionicons name="add-circle" size={30} color="#fff" />
+        </TouchableOpacity>
       </View>
-
       <View style={styles.container}>
-        {/* NEW: Display Total Physical Cash & Total E-Value Float */}
-        <View style={styles.totalSummaryContainer}>
-          <View style={styles.totalSummaryCard}>
-            <Text style={styles.totalSummaryLabel}>
+        {/* Display Total Values */}
+        <View style={styles.totalValueContainer}>
+          <View style={styles.totalValueCard}>
+            <Text style={styles.totalValueLabel}>
               {t("total_physical_cash")}
             </Text>
-            <Text style={styles.totalSummaryValue}>
+            <Text style={styles.totalValueText}>
               UGX {totalPhysicalCash.toLocaleString()}
             </Text>
+            {/* Display warning if physical cash is below minimum */}
+            {totalPhysicalCash < MIN_PHYSICAL_CASH_REQUIRED && (
+              <Text style={styles.warningText}>
+                {t("below_minimum_cash", {
+                  minCash: MIN_PHYSICAL_CASH_REQUIRED.toLocaleString(),
+                })}
+              </Text>
+            )}
             <TouchableOpacity
-              style={styles.editPhysicalCashButton}
               onPress={() => {
-                setPhysicalCashInput(totalPhysicalCash.toString());
+                setPhysicalCashInput(totalPhysicalCash.toString()); // Pre-fill with current cash
                 setIsPhysicalCashModalVisible(true);
               }}
+              style={styles.editCashButton}
             >
-              <Ionicons name="pencil-outline" size={18} color="#007bff" />
+              <Ionicons name="cash-outline" size={20} color="#007bff" />
+              <Text style={styles.editCashButtonText}>{t("edit_cash")}</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.totalSummaryCard}>
-            <Text style={styles.totalSummaryLabel}>
+          <View style={styles.totalValueCard}>
+            <Text style={styles.totalValueLabel}>
               {t("total_e_value_float")}
             </Text>
-            <Text style={styles.totalSummaryValue}>
+            <Text style={styles.totalValueText}>
               UGX {totalEValueFloat.toLocaleString()}
             </Text>
           </View>
         </View>
-        {/* END NEW DISPLAY */}
 
         {loading ? (
           <ActivityIndicator
@@ -331,144 +348,99 @@ export default function ManageFloatScreen() {
             style={styles.loadingIndicator}
           />
         ) : floatEntries.length === 0 ? (
-          <Text style={styles.noDataText}>{t("no_e_value_float_entries")}</Text>
+          <Text style={styles.noDataText}>{t("no_float_networks_added")}</Text>
         ) : (
           <FlatList
             data={floatEntries}
-            keyExtractor={(item) => item.itemName}
-            renderItem={renderItem}
+            keyExtractor={(item) => item.itemName} // Using itemName as key, assuming it's unique
+            renderItem={renderFloatItem}
             contentContainerStyle={styles.listContent}
-            style={styles.fullWidthList}
           />
         )}
-
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => handleAddEditFloat()}
-          disabled={loading}
-        >
-          <Ionicons name="add-circle" size={28} color="#fff" />
-          <Text style={styles.addButtonText}>
-            {t("add_e_value_float_entry")}
-          </Text>
-        </TouchableOpacity>
       </View>
 
-      {/* Add/Edit E-Value Float Modal */}
+      {/* Modal for adding/editing E-Value float */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={isModalVisible}
+        transparent={true}
+        animationType="fade"
         onRequestClose={() => setIsModalVisible(false)}
       >
         <KeyboardAvoidingView
-          style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+          style={styles.modalOverlay}
         >
-          <View style={styles.modalContent}>
+          <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>
-              {currentItem
-                ? t("edit_e_value_float_entry")
-                : t("add_new_e_value_float_entry")}
+              {currentItem ? t("edit_e_value_float") : t("add_e_value_float")}
             </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>{t("network_name")}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t("enter_network_name")}
-                value={networkName}
-                onChangeText={setNetworkName}
-                editable={!currentItem}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>{t("current_float_amount")}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t("enter_current_float_amount")}
-                keyboardType="numeric"
-                value={currentFloatAmount}
-                onChangeText={setCurrentFloatAmount}
-              />
-            </View>
-
+            <Text style={styles.label}>{t("network_name")}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t("enter_network_name")}
+              value={networkName}
+              onChangeText={setNetworkName}
+              editable={!currentItem} // Prevent editing network name if editing existing float
+            />
+            <Text style={styles.label}>{t("current_float_amount")}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t("enter_current_float_amount")}
+              keyboardType="numeric"
+              value={currentFloatAmount}
+              onChangeText={setCurrentFloatAmount}
+            />
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
                 onPress={() => setIsModalVisible(false)}
-                disabled={loading}
               >
-                <Text style={styles.modalButtonText}>{t("cancel")}</Text>
+                <Text style={styles.buttonText}>{t("cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton]}
-                onPress={handleSaveEValueFloat} // Renamed handler
-                disabled={loading}
+                onPress={handleSaveEValueFloat}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.modalButtonText}>{t("save")}</Text>
-                )}
+                <Text style={styles.buttonText}>{t("save")}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* NEW: Physical Cash Input Modal */}
+      {/* Modal for editing Physical Cash */}
       <Modal
-        animationType="slide"
-        transparent={true}
         visible={isPhysicalCashModalVisible}
-        onRequestClose={() => {
-          // Allow closing if loading or if physical cash is now greater than 0
-          if (loading || totalPhysicalCash > 0) {
-            setIsPhysicalCashModalVisible(false);
-          } else {
-            Toast.show({
-              type: "info",
-              text1: t("please_enter_physical_cash_to_proceed"),
-            });
-          }
-        }}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setIsPhysicalCashModalVisible(false)}
       >
         <KeyboardAvoidingView
-          style={styles.modalOverlay}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 60 : 0}
+          style={styles.modalOverlay}
         >
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t("update_physical_cash")}</Text>
-            <Text style={styles.modalSubtitle}>
-              {t("physical_cash_explanation")}
-            </Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>{t("physical_cash_amount")}</Text>
-              <TextInput
-                style={styles.input}
-                placeholder={t("enter_cash_amount")}
-                keyboardType="numeric"
-                value={physicalCashInput}
-                onChangeText={setPhysicalCashInput}
-              />
-            </View>
-
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>{t("set_physical_cash")}</Text>
+            <Text style={styles.label}>{t("current_physical_cash")}</Text>
+            <TextInput
+              style={styles.input}
+              placeholder={t("enter_physical_cash_amount")}
+              keyboardType="numeric"
+              value={physicalCashInput}
+              onChangeText={setPhysicalCashInput}
+            />
             <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => setIsPhysicalCashModalVisible(false)}
+              >
+                <Text style={styles.buttonText}>{t("cancel")}</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalButton, styles.saveButton]}
                 onPress={handleSavePhysicalCash}
-                disabled={loading}
               >
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.modalButtonText}>{t("save")}</Text>
-                )}
+                <Text style={styles.buttonText}>{t("save")}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -481,189 +453,160 @@ export default function ManageFloatScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f0f2f5",
+    backgroundColor: "#f6f6f6",
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingVertical: 15,
-    paddingHorizontal: 15,
-    backgroundColor: "#17a2b8",
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    paddingHorizontal: 20,
+    backgroundColor: "#ffc107",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0a800",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 5,
   },
-  backButton: {
-    padding: 5,
-    marginRight: 10,
-  },
   headerTitle: {
     fontSize: 22,
-    fontWeight: "bold",
+    fontWeight: "600",
     color: "#fff",
-    flex: 1,
-    textAlign: "center",
-    marginRight: 34,
+  },
+  addButton: {
+    padding: 5,
   },
   container: {
     flex: 1,
-    padding: 15,
-    alignItems: "center",
+    paddingHorizontal: 15,
+    paddingVertical: 10,
   },
-  // NEW: Styles for the total summary section
-  totalSummaryContainer: {
+  totalValueContainer: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "space-around",
     width: "100%",
     marginBottom: 20,
-    paddingHorizontal: 5,
+    marginTop: 5,
   },
-  totalSummaryCard: {
-    backgroundColor: "#ffffff",
+  totalValueCard: {
+    backgroundColor: "#d1ecf1",
     borderRadius: 10,
     padding: 15,
     flex: 1,
     marginHorizontal: 5,
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
     alignItems: "center",
-    justifyContent: "center",
-    position: "relative", // For the edit button
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
   },
-  totalSummaryLabel: {
+  totalValueLabel: {
     fontSize: 14,
-    color: "#666",
+    color: "#0c5460",
     marginBottom: 5,
-    textAlign: "center",
+    fontWeight: "bold",
   },
-  totalSummaryValue: {
+  totalValueText: {
     fontSize: 20,
     fontWeight: "bold",
-    color: "#333",
+    color: "#007bff",
+  },
+  warningText: {
+    fontSize: 12,
+    color: "#dc3545", // Red color for warning
+    marginTop: 5,
     textAlign: "center",
+    fontWeight: "bold",
   },
-  editPhysicalCashButton: {
-    position: "absolute",
-    top: 5,
-    right: 5,
-    padding: 5,
+  editCashButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 10,
+    backgroundColor: "#e2f0f4",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
   },
-  // END NEW SUMMARY STYLES
+  editCashButtonText: {
+    color: "#007bff",
+    marginLeft: 5,
+    fontWeight: "bold",
+  },
   loadingIndicator: {
     marginTop: 50,
   },
-  // Updated text for clarity
   noDataText: {
     fontSize: 16,
     color: "#888",
     textAlign: "center",
     marginTop: 50,
   },
-  fullWidthList: {
-    width: "100%",
-    marginTop: 10, // Add some space below the summary cards
-  },
-  listContent: {
-    paddingBottom: 80,
-  },
   itemCard: {
-    flexDirection: "row",
     backgroundColor: "#fff",
     borderRadius: 10,
     padding: 15,
     marginBottom: 10,
-    alignItems: "center",
+    flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 3,
-    borderLeftWidth: 5,
-    borderLeftColor: "#28a745",
   },
   itemDetails: {
     flex: 1,
-    marginRight: 10,
+    paddingRight: 10,
   },
   itemName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "bold",
     color: "#333",
+    marginBottom: 5,
   },
   itemStock: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#555",
-    marginTop: 5,
-  },
-  itemPrices: {
-    fontSize: 14,
-    color: "#777",
-    marginTop: 3,
   },
   itemActions: {
     flexDirection: "row",
-  },
-  actionButton: {
-    padding: 8,
-    borderRadius: 20,
-    marginLeft: 10,
-    justifyContent: "center",
     alignItems: "center",
+    marginLeft: 15,
   },
   editButton: {
-    backgroundColor: "#ffc107",
+    backgroundColor: "#28a745",
+    padding: 8,
+    borderRadius: 5,
+    marginLeft: 10,
   },
   deleteButton: {
     backgroundColor: "#dc3545",
-  },
-  addButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#007bff",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 25,
-    position: "absolute",
-    bottom: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 5,
-    elevation: 8,
-  },
-  addButtonText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "bold",
+    padding: 8,
+    borderRadius: 5,
     marginLeft: 10,
   },
-
-  // Modal Styles
+  // Modal styles
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.5)",
   },
-  modalContent: {
+  modalContainer: {
     backgroundColor: "#fff",
-    borderRadius: 15,
+    borderRadius: 10,
     padding: 25,
     width: "90%",
     maxWidth: 400,
-    elevation: 10,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 5 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 10,
+    shadowRadius: 4,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
@@ -672,29 +615,22 @@ const styles = StyleSheet.create({
     textAlign: "center",
     color: "#333",
   },
-  modalSubtitle: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
-    marginBottom: 15,
-  },
-  inputGroup: {
-    marginBottom: 15,
-  },
   label: {
-    fontSize: 15,
-    fontWeight: "600",
-    marginBottom: 5,
-    color: "#555",
+    fontSize: 16,
+    marginBottom: 8,
+    color: "#333",
+    fontWeight: "500",
   },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 8,
-    padding: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f9f9f9",
+    marginBottom: 15,
+    backgroundColor: "#fcfcfc",
   },
   modalButtons: {
     flexDirection: "row",
@@ -702,21 +638,25 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   modalButton: {
-    flex: 1,
     paddingVertical: 12,
+    paddingHorizontal: 25,
     borderRadius: 8,
     alignItems: "center",
+    flex: 1,
     marginHorizontal: 5,
+  },
+  saveButton: {
+    backgroundColor: "#007bff",
   },
   cancelButton: {
     backgroundColor: "#6c757d",
   },
-  saveButton: {
-    backgroundColor: "#28a745",
-  },
-  modalButtonText: {
+  buttonText: {
     color: "#fff",
     fontSize: 16,
-    fontWeight: "bold",
+    fontWeight: "600",
+  },
+  listContent: {
+    paddingBottom: 20, // Add some padding to the bottom of the list
   },
 });

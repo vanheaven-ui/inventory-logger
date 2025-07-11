@@ -8,12 +8,19 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  StatusBar,
   Alert,
 } from "react-native";
 import Toast from "react-native-toast-message";
-import { useNavigation, useRoute } from "@react-navigation/native";
+import {
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
+import Voice from "@react-native-community/voice";
+
 import {
   saveTransaction,
   getGeneralInventoryItems,
@@ -27,105 +34,194 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   const route = useRoute();
   const { type } = route.params; // 'sell' or 'restock' from TransactionScreen
 
-  const [networkName, setNetworkName] = useState(""); // For MM, this is network. For shop, item name.
-  const [transactionAmount, setTransactionAmount] = useState(""); // For MM, this is transaction amount. For shop, quantity.
+  const [networkName, setNetworkName] = useState("");
+  const [transactionAmount, setTransactionAmount] = useState("");
   const [customerIdentifier, setCustomerIdentifier] = useState("");
   const [loading, setLoading] = useState(false);
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const nav = useNavigation();
 
+  // Voice Recognition States
   const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
   const [isListeningAmount, setIsListeningAmount] = useState(false);
   const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] =
     useState(false);
-  const [speechResult, setSpeechResult] = useState("");
+  const [partialResults, setPartialResults] = useState([]);
+  const [lastSpokenField, setLastSpokenField] = useState(null);
 
-  // MOCK VOICE RECOGNITION FUNCTIONS - Keep as is
-  const mockStartListening = useCallback((field) => {
-    console.log(`MOCK: Starting listening for ${field}`);
-    if (field === "networkName") setIsListeningNetworkName(true);
-    else if (field === "transactionAmount") setIsListeningAmount(true);
-    else if (field === "customerIdentifier")
-      setIsListeningCustomerIdentifier(true);
-    setSpeechResult("");
+  // --- VOICE RECOGNITION IMPLEMENTATION ---
+  useEffect(() => {
+    // Set up voice event listeners
+    Voice.onSpeechStart = onSpeechStart;
+    Voice.onSpeechEnd = onSpeechEnd;
+    Voice.onSpeechResults = onSpeechResults;
+    Voice.onSpeechPartialResults = onSpeechPartialResults;
+    Voice.onSpeechError = onSpeechError;
 
-    setTimeout(() => {
-      let mockResult = "";
-      if (field === "networkName") {
-        const mockNetworks = ["MTN", "Airtel", "Africell", "Salt", "Sugar"];
-        mockResult =
-          mockNetworks[Math.floor(Math.random() * mockNetworks.length)];
-      } else if (field === "transactionAmount") {
-        mockResult = (Math.floor(Math.random() * 95000) + 5000).toString();
-      } else if (field === "customerIdentifier") {
-        const mockCustomers = [
-          "0771234567",
-          "0701987654",
-          "John Doe",
-          "Sarah K.",
-        ];
-        mockResult =
-          mockCustomers[Math.floor(Math.random() * mockCustomers.length)];
+    // Clean up listeners on unmount
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        stopRecognizing();
+        resetListeningStates();
+      };
+    }, [])
+  );
+
+  const resetListeningStates = () => {
+    setIsListeningNetworkName(false);
+    setIsListeningAmount(false);
+    setIsListeningCustomerIdentifier(false);
+    setPartialResults([]);
+    setLastSpokenField(null);
+  };
+
+  const onSpeechStart = useCallback(
+    (e) => {
+      console.log("onSpeechStart: ", e);
+      if (lastSpokenField === "networkName") setIsListeningNetworkName(true);
+      else if (lastSpokenField === "transactionAmount")
+        setIsListeningAmount(true);
+      else if (lastSpokenField === "customerIdentifier")
+        setIsListeningCustomerIdentifier(true);
+      setPartialResults([]);
+    },
+    [lastSpokenField]
+  );
+
+  const onSpeechEnd = useCallback((e) => {
+    console.log("onSpeechEnd: ", e);
+    resetListeningStates();
+  }, []);
+
+  const onSpeechResults = useCallback(
+    (e) => {
+      console.log("onSpeechResults: ", e);
+      if (e.value && e.value.length > 0) {
+        const recognizedText = e.value[0];
+        applyVoiceResultToField(recognizedText, lastSpokenField);
       }
-      setSpeechResult(mockResult);
+      resetListeningStates();
+    },
+    [lastSpokenField]
+  );
+
+  const onSpeechPartialResults = useCallback((e) => {
+    console.log("onSpeechPartialResults: ", e);
+    if (e.value) {
+      setPartialResults(e.value);
+    }
+  }, []);
+
+  const onSpeechError = useCallback(
+    (e) => {
+      console.log("onSpeechError: ", e);
+      resetListeningStates();
+      Toast.show({
+        type: "error",
+        text1: t("voice_recognition_error"),
+        text2: e.error ? e.error.message : t("try_again_or_check_settings"),
+      });
+    },
+    [t]
+  );
+
+  const startRecognizing = async (field) => {
+    if (
+      isListeningNetworkName ||
+      isListeningAmount ||
+      isListeningCustomerIdentifier
+    ) {
+      await stopRecognizing();
+      resetListeningStates();
+    }
+
+    setLastSpokenField(field);
+    setPartialResults([]);
+
+    try {
+      const langCode = language === "lg" ? "lg-UG" : "en-UG"; // Use specific locale if supported
+      await Voice.start(langCode);
       Toast.show({
         type: "info",
-        text1: `Voice Input (${field}): ${mockResult}`,
-        visibilityTime: 2000,
+        text1: t("speak_now"),
+        text2: t("listening_for_field", { field: t(field) }),
       });
-      console.log(`MOCK: Received speech result for ${field}: ${mockResult}`);
-    }, 2000);
-  }, []);
-
-  const mockStopListening = useCallback((field) => {
-    console.log(`MOCK: Stopping listening for ${field}`);
-    if (field === "networkName") setIsListeningNetworkName(false);
-    else if (field === "transactionAmount") setIsListeningAmount(false);
-    else if (field === "customerIdentifier")
-      setIsListeningCustomerIdentifier(false);
-  }, []);
-
-  useEffect(() => {
-    if (speechResult) {
-      if (isListeningNetworkName) {
-        setNetworkName(speechResult);
-        setIsListeningNetworkName(false);
-      } else if (isListeningAmount) {
-        setTransactionAmount(speechResult);
-        setIsListeningAmount(false);
-      } else if (isListeningCustomerIdentifier) {
-        setCustomerIdentifier(speechResult);
-        setIsListeningCustomerIdentifier(false);
-      }
-      setSpeechResult("");
+    } catch (e) {
+      console.error("Error starting voice recognition:", e);
+      Toast.show({
+        type: "error",
+        text1: t("voice_start_error"),
+        text2: e.message || t("check_mic_permissions"),
+      });
+      resetListeningStates();
     }
-  }, [
-    speechResult,
-    isListeningNetworkName,
-    isListeningAmount,
-    isListeningCustomerIdentifier,
-  ]);
+  };
 
-  // --- NEW: Function to determine button text dynamically ---
+  const stopRecognizing = async () => {
+    try {
+      await Voice.stop();
+    } catch (e) {
+      console.error("Error stopping voice recognition:", e);
+    }
+  };
+
+  const applyVoiceResultToField = useCallback(
+    (result, field) => {
+      const cleanedResult = result.trim();
+      if (!cleanedResult) return;
+
+      switch (field) {
+        case "networkName":
+          setNetworkName(cleanedResult);
+          break;
+        case "transactionAmount":
+          const parsedAmount = cleanedResult.replace(/[^0-9.]/g, "");
+          if (parsedAmount) {
+            setTransactionAmount(parsedAmount);
+          } else {
+            Toast.show({
+              type: "error",
+              text1: t("invalid_amount_voice"),
+              text2: t("please_speak_clearly"),
+            });
+          }
+          break;
+        case "customerIdentifier":
+          setCustomerIdentifier(cleanedResult);
+          break;
+        default:
+          console.warn("Unknown field for voice input:", field);
+      }
+    },
+    [t]
+  );
+
   const getSubmitButtonText = useCallback(() => {
     if (isMobileMoneyAgent) {
       if (type === "sell") {
-        return t("record_withdrawal"); // "Record Withdrawal"
+        return t("record_withdrawal");
       } else {
-        // type === 'restock'
-        return t("record_deposit"); // "Record Deposit"
+        return t("record_deposit");
       }
     } else {
       if (type === "sell") {
-        return t("record_sale"); // "Record Sale"
+        return t("record_sale");
       } else {
-        // type === 'restock'
-        return t("record_restock"); // "Record Restock"
+        return t("record_restock");
       }
     }
-  }, [isMobileMoneyAgent, type, t]); // Depends on these props/state
+  }, [isMobileMoneyAgent, type, t]);
 
   const handleSubmit = async () => {
+    await stopRecognizing();
+    resetListeningStates();
+
     const isWithdrawal = type === "sell";
     const parsedAmount = parseFloat(transactionAmount);
 
@@ -155,59 +251,59 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     setLoading(true);
     try {
       let transactionPayload = {
-        id: Date.now().toString(), // Add a unique ID for each transaction
-        type: type, // "sell" or "restock"
-        itemName: networkName, // "Salt" or "MTN" etc.
-        quantity: parsedAmount, // Number of units for general, or actual amount for MM
-        customer: customerIdentifier, // For MM, or general customer info
-        isMobileMoneyAgent: isMobileMoneyAgent, // Pass this directly
-        timestamp: new Date().toISOString(), // Add timestamp for sorting/filtering
+        id: Date.now().toString(),
+        type: type,
+        itemName: networkName,
+        quantity: parsedAmount,
+        customer: customerIdentifier,
+        isMobileMoneyAgent: isMobileMoneyAgent,
+        timestamp: new Date().toISOString(),
       };
 
       if (!isMobileMoneyAgent) {
         let currentItems = await getGeneralInventoryItems();
         let existingItem = currentItems.find(
-          (item) =>
-            item.itemName &&
-            item.itemName.toLowerCase() === networkName.toLowerCase()
+          (item) => item.itemName?.toLowerCase() === networkName.toLowerCase()
         );
 
         if (existingItem) {
           transactionPayload.costPrice = existingItem.costPricePerUnit;
           transactionPayload.sellingPrice = existingItem.sellingPricePerUnit;
-          // Calculate amount for general sales/restocks
           if (type === "sell") {
             transactionPayload.amount =
-              parsedAmount * existingItem.sellingPricePerUnit; // Quantity * sellingPrice
+              parsedAmount * existingItem.sellingPricePerUnit;
           } else if (type === "restock") {
             transactionPayload.amount =
-              parsedAmount * existingItem.costPricePerUnit; // Quantity * costPrice
+              parsedAmount * existingItem.costPricePerUnit;
           }
-          // Update inventory quantity
+
           const updatedQuantity =
             type === "sell"
-              ? existingItem.quantity - parsedAmount
-              : existingItem.quantity + parsedAmount;
+              ? existingItem.currentStock - parsedAmount
+              : existingItem.currentStock + parsedAmount;
           await updateGeneralInventoryItem({
             ...existingItem,
-            quantity: updatedQuantity,
+            currentStock: updatedQuantity,
           });
+
+          await saveTransaction(transactionPayload);
+          Toast.show({ type: "success", text1: t("transaction_recorded") });
+          nav.goBack();
         } else {
-          console.warn(
-            `Item "${networkName}" not found in general inventory. Transaction recorded without price/cost. Consider adding it to inventory.`
-          );
-          transactionPayload.costPrice = 0;
-          transactionPayload.sellingPrice = 0;
-          transactionPayload.amount = 0; // Default amount if price is unknown
           Toast.show({
-            type: "info",
-            text1: t("item_not_in_inventory_warning"),
-            text2: t("consider_adding_item"),
+            type: "error",
+            text1: t("item_not_found_in_inventory"),
+            text2: t("please_add_item_first"),
+            visibilityTime: 4000,
+          });
+
+          nav.navigate("ManageItem", {
+            itemName: networkName,
+            isNewItem: true,
           });
         }
       } else {
-        // For Mobile Money
-        transactionPayload.amount = parsedAmount; // The amount transacted
+        transactionPayload.amount = parsedAmount;
         const commission = await calculateCommission(
           networkName,
           parsedAmount,
@@ -215,45 +311,29 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
         );
         transactionPayload.commissionEarned = commission;
 
-        // Update mobile money float (assumes you have a 'networkName' for float entries)
         let currentFloatEntries = await getFloatEntries();
         let existingFloat = currentFloatEntries.find(
-          (entry) => entry.network.toLowerCase() === networkName.toLowerCase()
+          (entry) => entry.itemName?.toLowerCase() === networkName.toLowerCase()
         );
 
         if (existingFloat) {
           const updatedFloatValue =
             type === "sell" // withdrawal
-              ? existingFloat.currentFloat - parsedAmount
-              : existingFloat.currentFloat + parsedAmount; // deposit
+              ? existingFloat.currentStock - parsedAmount
+              : existingFloat.currentStock + parsedAmount; // deposit
           await updateFloatEntry({
             ...existingFloat,
-            currentFloat: updatedFloatValue,
+            currentStock: updatedFloatValue,
           });
         } else {
           console.warn(
-            `Float entry for network "${networkName}" not found. Float not updated.`
+            `Float entry for network "${networkName}" not found. It will be added as a new float entry by saveTransaction.`
           );
-          Toast.show({
-            type: "info",
-            text1: t("float_not_updated_warning"),
-            text2: t("consider_adding_float_entry", { network: networkName }),
-          });
         }
+        await saveTransaction(transactionPayload);
+        Toast.show({ type: "success", text1: t("transaction_recorded") });
+        nav.goBack();
       }
-
-      console.log(
-        "Final Transaction Payload to saveTransaction:",
-        JSON.stringify(transactionPayload, null, 2)
-      ); // Debug log
-
-      await saveTransaction(transactionPayload);
-
-      Toast.show({
-        type: "success",
-        text1: t("transaction_recorded"),
-      });
-      nav.goBack();
     } catch (error) {
       console.error("Error submitting transaction:", error);
       Toast.show({
@@ -266,12 +346,46 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     }
   };
 
+  const getMicIconName = (field) => {
+    if (field === "networkName" && isListeningNetworkName) return "mic";
+    if (field === "transactionAmount" && isListeningAmount) return "mic";
+    if (field === "customerIdentifier" && isListeningCustomerIdentifier)
+      return "mic";
+    return "mic-outline";
+  };
+
+  const getMicButtonColor = (field) => {
+    if (
+      (field === "networkName" && isListeningNetworkName) ||
+      (field === "transactionAmount" && isListeningAmount) ||
+      (field === "customerIdentifier" && isListeningCustomerIdentifier)
+    ) {
+      return styles.colors.activeMic; // Red when active to indicate recording
+    }
+    return styles.colors.primary; // Blue when inactive
+  };
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={styles.container}
+      keyboardVerticalOffset={
+        Platform.OS === "ios" ? 0 : StatusBar.currentHeight + 20
+      }
     >
       <View style={styles.form}>
+        {(isListeningNetworkName ||
+          isListeningAmount ||
+          isListeningCustomerIdentifier) && (
+          <View style={styles.voiceStatusContainer}>
+            <ActivityIndicator size="small" color={styles.colors.primary} />
+            <Text style={styles.voiceStatusText}>{t("listening")}...</Text>
+            {partialResults.length > 0 && (
+              <Text style={styles.partialResultsText}>{partialResults[0]}</Text>
+            )}
+          </View>
+        )}
+
         <Text style={styles.label}>
           {isMobileMoneyAgent ? t("network_name") : t("item_name")}
         </Text>
@@ -283,16 +397,17 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
             placeholder={
               isMobileMoneyAgent ? t("enter_network") : t("enter_item_name")
             }
-            placeholderTextColor="#999"
+            placeholderTextColor={styles.colors.placeholderText}
           />
           <TouchableOpacity
-            onPress={() => mockStartListening("networkName")}
+            onPress={() => startRecognizing("networkName")}
             style={styles.micButton}
+            disabled={loading}
           >
             <Ionicons
-              name={isListeningNetworkName ? "mic" : "mic-outline"}
-              size={24}
-              color="#007bff"
+              name={getMicIconName("networkName")}
+              size={28}
+              color={getMicButtonColor("networkName")}
             />
           </TouchableOpacity>
         </View>
@@ -309,16 +424,17 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
             placeholder={
               isMobileMoneyAgent ? t("enter_amount") : t("enter_quantity")
             }
-            placeholderTextColor="#999"
+            placeholderTextColor={styles.colors.placeholderText}
           />
           <TouchableOpacity
-            onPress={() => mockStartListening("transactionAmount")}
+            onPress={() => startRecognizing("transactionAmount")}
             style={styles.micButton}
+            disabled={loading}
           >
             <Ionicons
-              name={isListeningAmount ? "mic" : "mic-outline"}
-              size={24}
-              color="#007bff"
+              name={getMicIconName("transactionAmount")}
+              size={28}
+              color={getMicButtonColor("transactionAmount")}
             />
           </TouchableOpacity>
         </View>
@@ -332,16 +448,17 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
                 value={customerIdentifier}
                 onChangeText={setCustomerIdentifier}
                 placeholder={t("enter_customer_phone_or_name")}
-                placeholderTextColor="#999"
+                placeholderTextColor={styles.colors.placeholderText}
               />
               <TouchableOpacity
-                onPress={() => mockStartListening("customerIdentifier")}
+                onPress={() => startRecognizing("customerIdentifier")}
                 style={styles.micButton}
+                disabled={loading}
               >
                 <Ionicons
-                  name={isListeningCustomerIdentifier ? "mic" : "mic-outline"}
-                  size={24}
-                  color="#007bff"
+                  name={getMicIconName("customerIdentifier")}
+                  size={28}
+                  color={getMicButtonColor("customerIdentifier")}
                 />
               </TouchableOpacity>
             </View>
@@ -349,12 +466,10 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
         )}
 
         {loading ? (
-          <ActivityIndicator size="large" color="#007bff" />
+          <ActivityIndicator size="large" color={styles.colors.primary} />
         ) : (
           <TouchableOpacity style={styles.button} onPress={handleSubmit}>
-            <Text style={styles.buttonText}>
-              {getSubmitButtonText()} {/* Dynamic text here! */}
-            </Text>
+            <Text style={styles.buttonText}>{getSubmitButtonText()}</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -363,57 +478,97 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 }
 
 const styles = StyleSheet.create({
+  // Define a color palette for easier management
+  colors: {
+    primary: "#0F4C81", // A deep, strong blue (common in finance/tech)
+    secondary: "#FFAA00", // A vibrant orange/yellow (can be used for accents or warnings)
+    success: "#28a745", // Standard green for success
+    danger: "#dc3545", // Standard red for errors/active mic
+    textPrimary: "#333333",
+    textSecondary: "#666666",
+    placeholderText: "#999999",
+    background: "#F8F9FA", // Light grey-white background
+    cardBackground: "#FFFFFF", // Pure white for forms/cards
+    borderColor: "#DDDDDD",
+    activeMic: "#dc3545", // Red when mic is active
+  },
   container: {
     flex: 1,
-    backgroundColor: "#f6f6f6",
+    backgroundColor: "#F0F4F7", // Slightly off-white/light blue for a softer feel
     justifyContent: "center",
     padding: 20,
   },
   form: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
-    padding: 20,
+    backgroundColor: "#FFFFFF", // Pure white for the form card
+    borderRadius: 12, // Slightly larger border radius for a softer look
+    padding: 25, // More padding inside the form
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 }, // More pronounced shadow
+    shadowOpacity: 0.15, // A bit more opaque shadow
+    shadowRadius: 10,
+    elevation: 8, // Higher elevation for Android shadow
   },
   label: {
-    fontSize: 16,
+    fontSize: 17, // Slightly larger font size for readability
     marginBottom: 8,
-    color: "#333",
-    fontWeight: "500",
+    color: "#333333", // Darker text for better contrast
+    fontWeight: "600", // Stronger font weight
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    marginBottom: 15,
+    marginBottom: 20, // More space between input fields
     borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    backgroundColor: "#fcfcfc",
+    borderColor: "#CCCCCC", // Lighter border
+    borderRadius: 10, // Matching the form's border radius
+    backgroundColor: "#FDFDFD", // Very light background for inputs
   },
   input: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14, // More vertical padding
     paddingHorizontal: 15,
-    fontSize: 16,
-    color: "#333",
+    fontSize: 17, // Larger text in inputs
+    color: "#333333",
   },
   micButton: {
-    padding: 10,
+    padding: 12, // Larger padding for easier tap
   },
   button: {
-    backgroundColor: "#007bff",
-    paddingVertical: 15,
-    borderRadius: 8,
+    backgroundColor: "#0F4C81", // Use the primary blue
+    paddingVertical: 18, // Taller button for easier tap
+    borderRadius: 10, // Matching other rounded elements
     alignItems: "center",
-    marginTop: 20,
+    marginTop: 25, // More space above the button
   },
   buttonText: {
-    color: "#fff",
-    fontSize: 18,
-    fontWeight: "600",
+    color: "#FFFFFF",
+    fontSize: 19, // Larger text in button
+    fontWeight: "700", // Bold text
+  },
+  voiceStatusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12, // More padding
+    backgroundColor: "#EBF5FF", // Lighter blue for status
+    borderRadius: 10,
+    marginBottom: 20, // More space below status
+    borderWidth: 1,
+    borderColor: "#CDE0F6", // A complementary border
+  },
+  voiceStatusText: {
+    marginLeft: 12, // More space from spinner
+    fontSize: 16,
+    color: "#0056B3", // Darker blue for status text
+    fontWeight: "500",
+  },
+  partialResultsText: {
+    marginTop: 8, // More space
+    fontSize: 15, // Slightly larger
+    color: "#0056B3",
+    fontStyle: "italic",
+    textAlign: "center",
+    flexShrink: 1, // Allow text to wrap
+    paddingHorizontal: 10,
   },
 });

@@ -6,7 +6,11 @@ const GENERAL_INVENTORY_KEY = "app_general_inventory"; // Dedicated key for gene
 const MOBILE_MONEY_FLOAT_KEY = "app_mobile_money_float"; // Dedicated key for mobile money float
 const LAST_SUMMARY_RESET_TIMESTAMP_KEY = "app_last_summary_reset_timestamp";
 const DAILY_SUMMARY_DATA_KEY = "app_daily_summary_data";
-const PHYSICAL_CASH_KEY = "app_physical_cash"; // NEW: Dedicated key for total physical cash
+const PHYSICAL_CASH_KEY = "app_physical_cash"; // Dedicated key for total physical cash
+const COMMISSION_EARNINGS_KEY = "app_commission_earnings"; // Dedicated key for total accumulated commission earnings
+
+// --- UPDATED: Realistic Minimum Physical Cash Required (based on MTN's stated minimum for agents) ---
+const MIN_PHYSICAL_CASH_REQUIRED = 100000; // UGX 100,000 minimum physical cash to operate MM business, as per MTN agent agreements.
 
 // MOCK UGANDAN MOBILE MONEY COMMISSION TIERS
 // IMPORTANT: These are example values. Replace with actual, up-to-date rates for MTN/Airtel Uganda.
@@ -222,7 +226,7 @@ export const calculateCommission = (networkName, amount, transactionType) => {
 const getData = async (key) => {
   try {
     const jsonValue = await AsyncStorage.getItem(key);
-    return jsonValue != null ? JSON.parse(jsonValue) : null;
+    return jsonValue != null && jsonValue !== "" ? JSON.parse(jsonValue) : null;
   } catch (e) {
     console.error(`Error reading data from ${key}:`, e);
     return null;
@@ -248,6 +252,7 @@ export const getTransactions = async () => {
 
 /**
  * Saves a transaction and updates the relevant inventory/float.
+ * Includes validation for sufficient stock/cash/float.
  * @param {object} transactionData - Details of the transaction (type, itemName, quantity, customer, etc.)
  */
 export async function saveTransaction(transactionData) {
@@ -266,157 +271,209 @@ export async function saveTransaction(transactionData) {
     console.log(
       "Constructed newTransaction in saveTransaction:",
       newTransaction
-    ); // Debug log
+    );
 
-    // --- ADDITION FOR MOBILE MONEY COMMISSION ---
-    if (newTransaction.isMobileMoney && newTransaction.type === "sell") {
-      // Assuming itemName here refers to the network (e.g., "MTN", "Airtel")
-      const commission = calculateCommission(
-        newTransaction.itemName,
-        newTransaction.quantity,
-        "withdrawal" // Explicitly pass transaction type for calculation
-      );
-      newTransaction.commissionEarned = commission;
-    } else if (
-      newTransaction.isMobileMoney &&
-      newTransaction.type === "restock"
-    ) {
-      const commission = calculateCommission(
-        newTransaction.itemName,
-        newTransaction.quantity,
-        "deposit" // Explicitly pass transaction type for calculation
-      );
-      newTransaction.commissionEarned = commission;
-    }
-    // --- END ADDITION ---
+    let commissionEarnedForTransaction = 0;
 
-    console.log("Transactions array BEFORE push:", transactions); // Debug log
-    transactions.push(newTransaction);
-    console.log("Transactions array AFTER push:", transactions); // Debug log
+    // Fetch current balances for validation BEFORE potential updates
+    let currentPhysicalCash = await getPhysicalCash();
+    const currentFloatEntries = await getFloatEntries(); // Get all float entries
+    const currentGeneralInventory = await getGeneralInventoryItems(); // Get all general inventory items
 
-    await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
-    console.log(
-      "Stringified transactions for saving:",
-      JSON.stringify(transactions)
-    ); // Debug log
-    console.log("Transaction saved to TRANSACTIONS_KEY:", newTransaction);
-
-    // --- Update Inventory/Float based on business type ---
+    // --- Mobile Money Specific Logic & Validation ---
     if (newTransaction.isMobileMoney) {
-      const currentFloat = await getFloatEntries();
-      const existingFloatIndex = currentFloat.findIndex(
+      const existingFloatIndex = currentFloatEntries.findIndex(
         (item) =>
-          item && // ADDED: Ensure item is not null/undefined
-          item.itemName && // ADDED: Ensure item.itemName exists
-          newTransaction.itemName && // ADDED: Ensure newTransaction.itemName exists
+          item &&
+          item.itemName &&
+          newTransaction.itemName &&
           item.itemName.toLowerCase() === newTransaction.itemName.toLowerCase()
       );
 
-      if (existingFloatIndex !== -1) {
-        const updatedFloat = [...currentFloat];
-        const floatToUpdate = { ...updatedFloat[existingFloatIndex] };
-
-        if (newTransaction.type === "sell") {
-          // Withdrawal
-          floatToUpdate.currentStock -= newTransaction.quantity; // Subtract transaction amount from float
-        } else if (newTransaction.type === "restock") {
-          // Deposit
-          floatToUpdate.currentStock += newTransaction.quantity; // Add transaction amount to float
-        }
-        floatToUpdate.lastUpdated = Date.now();
-        updatedFloat[existingFloatIndex] = floatToUpdate;
-        await saveData(MOBILE_MONEY_FLOAT_KEY, updatedFloat);
-        console.log("Mobile Money Float updated:", floatToUpdate);
-      } else {
-        console.warn(
-          `Transaction for unknown float network "${newTransaction.itemName}" recorded. Please ensure it's added via ManageFloat.`
+      // Prevent transaction if the mobile money network is not configured
+      if (existingFloatIndex === -1) {
+        throw new Error(
+          `Mobile money network '${newTransaction.itemName}' not configured. Please add it via Manage Float.`
         );
-        const newFloatEntry = {
-          itemName: newTransaction.itemName,
-          currentStock:
-            newTransaction.type === "sell"
-              ? -newTransaction.quantity
-              : newTransaction.quantity, // Initial stock change
-          costPricePerUnit: 0,
-          sellingPricePerUnit: 0,
-          lastUpdated: Date.now(),
-        };
-        await saveData(MOBILE_MONEY_FLOAT_KEY, [
-          ...currentFloat,
-          newFloatEntry,
-        ]);
-        console.log("New Float Entry created:", newFloatEntry);
+      }
+
+      // Create a mutable copy of the float list for updates
+      const updatedFloatList = [...currentFloatEntries];
+      const floatToUpdate = updatedFloatList[existingFloatIndex]; // Reference the object within the mutable list
+
+      if (newTransaction.type === "restock") {
+        // Mobile Money Deposit (Agent gives float, receives cash)
+        // Commission calculation for deposit
+        const commission = calculateCommission(
+          newTransaction.itemName,
+          newTransaction.quantity,
+          "deposit"
+        );
+        newTransaction.commissionEarned = commission;
+        commissionEarnedForTransaction = commission;
+
+        // --- VALIDATION: Insufficient Float for Deposit ---
+        if (floatToUpdate.currentStock < Number(newTransaction.quantity)) {
+          throw new Error(
+            `Insufficient float (${floatToUpdate.itemName}) for this deposit. Available: ${floatToUpdate.currentStock}, Required: ${newTransaction.quantity}.`
+          );
+        }
+        // --- END VALIDATION ---
+
+        // Update float (agent gives out float)
+        floatToUpdate.currentStock -= Number(newTransaction.quantity);
+        console.log(
+          `Mobile Money Deposit: Float for ${floatToUpdate.itemName} decreased by ${newTransaction.quantity}. New float: ${floatToUpdate.currentStock}`
+        );
+
+        // Update physical cash (as per latest instruction: deposit decrements cash)
+        currentPhysicalCash -= Number(newTransaction.quantity);
+        if (commissionEarnedForTransaction) {
+          currentPhysicalCash += Number(commissionEarnedForTransaction); // Add commission to cash
+        }
+        console.log(
+          `Physical Cash after MM Deposit (User's Rule): Paid out ${
+            newTransaction.quantity
+          }, earned commission ${
+            commissionEarnedForTransaction || 0
+          }. New cash: ${currentPhysicalCash}`
+        );
+      } else if (newTransaction.type === "sell") {
+        // Mobile Money Withdrawal (Agent receives float, hands out cash)
+        // Commission calculation for withdrawal
+        const commission = calculateCommission(
+          newTransaction.itemName,
+          newTransaction.quantity,
+          "withdrawal"
+        );
+        newTransaction.commissionEarned = commission;
+        commissionEarnedForTransaction = commission;
+
+        // --- VALIDATION: Insufficient Physical Cash for Withdrawal ---
+        if (currentPhysicalCash < Number(newTransaction.quantity)) {
+          throw new Error(
+            `Insufficient physical cash for this withdrawal. Available: ${currentPhysicalCash}, Required: ${newTransaction.quantity}.`
+          );
+        }
+        // --- NEW VALIDATION: Minimum Physical Cash Enforcement ---
+        // Calculate projected cash *after* this withdrawal and commission
+        // Assuming withdrawal INCREMENTS cash and commission INCREMENTS cash (as per your last direct instruction)
+        const projectedPhysicalCashAfterWithdrawal =
+          currentPhysicalCash +
+          Number(newTransaction.quantity) +
+          Number(commissionEarnedForTransaction || 0);
+        if (projectedPhysicalCashAfterWithdrawal < MIN_PHYSICAL_CASH_REQUIRED) {
+          throw new Error(
+            `Transaction would result in physical cash (${projectedPhysicalCashAfterWithdrawal} UGX) below the minimum required (${MIN_PHYSICAL_CASH_REQUIRED} UGX) to operate.`
+          );
+        }
+        // --- END NEW VALIDATION ---
+
+        // Update float (agent receives float)
+        floatToUpdate.currentStock += Number(newTransaction.quantity);
+        console.log(
+          `Mobile Money Withdrawal: Float for ${floatToUpdate.itemName} increased by ${newTransaction.quantity}. New float: ${floatToUpdate.currentStock}`
+        );
+
+        // Update physical cash (as per latest instruction: withdrawal increments cash)
+        currentPhysicalCash += Number(newTransaction.quantity);
+        if (commissionEarnedForTransaction) {
+          currentPhysicalCash += Number(commissionEarnedForTransaction); // Add commission to cash
+        }
+        console.log(
+          `Physical Cash after MM Withdrawal (User's Rule): Received ${
+            newTransaction.quantity
+          }, earned commission ${
+            commissionEarnedForTransaction || 0
+          }. New cash: ${currentPhysicalCash}`
+        );
+      }
+
+      floatToUpdate.lastUpdated = Date.now();
+      await saveData(MOBILE_MONEY_FLOAT_KEY, updatedFloatList); // Save the entire updated list
+      console.log("Mobile Money Float updated and saved.");
+
+      // Update total commission earnings (this logic remains the same)
+      if (commissionEarnedForTransaction > 0) {
+        let totalCommissionEarnings = await getCommissionEarnings();
+        totalCommissionEarnings += commissionEarnedForTransaction;
+        await saveCommissionEarnings(totalCommissionEarnings);
+        console.log(
+          "Total Commission Earnings updated:",
+          totalCommissionEarnings
+        );
       }
     } else {
-      // General Shop Inventory
-      const currentInventory = await getGeneralInventoryItems();
-      const existingItemIndex = currentInventory.findIndex(
+      // --- General Shop Inventory Logic & Validation ---
+      const existingItemIndex = currentGeneralInventory.findIndex(
         (item) =>
-          item && // ADDED: Ensure item is not null/undefined
-          item.itemName && // ADDED: Ensure item.itemName exists
-          newTransaction.itemName && // ADDED: Ensure newTransaction.itemName exists
+          item &&
+          item.itemName &&
+          newTransaction.itemName &&
           item.itemName.toLowerCase() === newTransaction.itemName.toLowerCase()
       );
 
-      if (existingItemIndex !== -1) {
-        const updatedInventory = [...currentInventory];
-        const itemToUpdate = { ...updatedInventory[existingItemIndex] };
-
-        if (newTransaction.type === "sell") {
-          itemToUpdate.currentStock -= newTransaction.quantity; // 'quantity' is amount of items sold
-        } else if (newTransaction.type === "restock") {
-          itemToUpdate.currentStock += newTransaction.quantity; // 'quantity' is amount of items restocked
-        }
-        itemToUpdate.lastUpdated = Date.now();
-        updatedInventory[existingItemIndex] = itemToUpdate;
-        await saveData(GENERAL_INVENTORY_KEY, updatedInventory);
-        console.log("General Inventory item updated:", itemToUpdate);
-      } else {
+      // If item not found in inventory, warn but proceed to add new item
+      if (existingItemIndex === -1) {
         console.warn(
-          `Transaction for unknown general inventory item "${newTransaction.itemName}" recorded. Please ensure it's added via ManageItem.`
+          `Transaction for unknown general inventory item "${newTransaction.itemName}" recorded. Adding as a new item.`
         );
         const newItem = {
           itemName: newTransaction.itemName,
-          currentStock: newTransaction.quantity, // Initial stock is the quantity from this transaction
-          costPricePerUnit: newTransaction.costPrice || 0, // Use costPrice from transaction, or 0
-          sellingPricePerUnit: newTransaction.sellingPrice || 0, // Use sellingPrice from transaction, or 0
-          createdAt: Date.now(), // Added for consistency
+          currentStock: Number(newTransaction.quantity), // Initial stock from this transaction
+          costPricePerUnit: Number(newTransaction.costPrice || 0),
+          sellingPricePerUnit: Number(newTransaction.sellingPrice || 0),
+          createdAt: Date.now(),
           lastUpdated: Date.now(),
         };
-        await saveData(GENERAL_INVENTORY_KEY, [...currentInventory, newItem]);
+        await saveData(GENERAL_INVENTORY_KEY, [
+          ...currentGeneralInventory,
+          newItem,
+        ]);
         console.log("New General Inventory item created:", newItem);
+        // Note: For newly created items from a 'sell' transaction, stock might become negative
+        // immediately if quantity > 0. This might require further business logic depending on
+        // whether negative stock is allowed for new items on sale. For now, it proceeds.
+      } else {
+        const updatedInventory = [...currentGeneralInventory]; // Create mutable copy
+        const itemToUpdate = updatedInventory[existingItemIndex]; // Reference object in mutable copy
+
+        if (newTransaction.type === "sell") {
+          // --- VALIDATION: Insufficient Stock for Sale ---
+          if (itemToUpdate.currentStock < Number(newTransaction.quantity)) {
+            throw new Error(
+              `Insufficient stock (${itemToUpdate.itemName}) for this sale. Available: ${itemToUpdate.currentStock}, Required: ${newTransaction.quantity}.`
+            );
+          }
+          // --- END VALIDATION ---
+          itemToUpdate.currentStock -= newTransaction.quantity;
+          currentPhysicalCash += Number(newTransaction.amount); // General item sale increases cash
+        } else if (newTransaction.type === "restock") {
+          itemToUpdate.currentStock += newTransaction.quantity;
+          currentPhysicalCash -= Number(newTransaction.amount); // General item restock decreases cash (money paid out)
+        }
+        itemToUpdate.lastUpdated = Date.now();
+        await saveData(GENERAL_INVENTORY_KEY, updatedInventory); // Save updated list
+        console.log("General Inventory item updated and saved.");
       }
     }
 
-    // --- NEW: Update Physical Cash based on transaction type ---
-    let currentPhysicalCash = await getPhysicalCash();
-    if (newTransaction.type === "sell") {
-      // Selling (either general item or mobile money withdrawal)
-      currentPhysicalCash += newTransaction.amount; // Cash increases by transaction amount
-      // If mobile money withdrawal, also add the commission earned to physical cash
-      if (newTransaction.isMobileMoney && newTransaction.commissionEarned) {
-        currentPhysicalCash += newTransaction.commissionEarned;
-      }
-    } else if (newTransaction.type === "restock") {
-      // Restocking (either general item or mobile money deposit)
-      currentPhysicalCash -= newTransaction.amount; // Cash decreases by amount spent on restock
-      // If mobile money deposit, also add the commission earned to physical cash
-      // NOTE: For deposits, the user *receives* commission, so their physical cash increases.
-      if (newTransaction.isMobileMoney && newTransaction.commissionEarned) {
-        currentPhysicalCash += newTransaction.commissionEarned;
-      }
-    }
-    // Handle cases where amount might be calculated differently (e.g., profit for general items)
-    // For general item 'sell', newTransaction.amount is usually the sellingPrice * quantity
-    // For general item 'restock', newTransaction.amount is usually the costPrice * quantity
+    // Save the transaction record itself (moved here after all inventory/float updates and validations)
+    transactions.push(newTransaction);
+    await AsyncStorage.setItem(TRANSACTIONS_KEY, JSON.stringify(transactions));
+    console.log("Transaction saved to TRANSACTIONS_KEY:", newTransaction);
+
+    // Save the final physical cash balance after all calculations
     await savePhysicalCash(currentPhysicalCash);
     console.log(
       "Physical cash updated after transaction:",
       currentPhysicalCash
     );
-    // --- END NEW PHYSICAL CASH UPDATE ---
+
+    return true; // Indicate success
   } catch (error) {
     console.error("Error saving transaction:", error);
+    // Re-throw the error so UI can catch it and display a message to the user
     throw error;
   }
 }
@@ -442,28 +499,63 @@ export const getDailySummaryData = async () => {
   return await getData(DAILY_SUMMARY_DATA_KEY);
 };
 
-// --- GENERAL SHOP INVENTORY MANAGEMENT FUNCTIONS (Renamed/New) ---
+// --- GENERAL SHOP INVENTORY MANAGEMENT FUNCTIONS ---
 
 export const getGeneralInventoryItems = async () => {
-  return (await getData(GENERAL_INVENTORY_KEY)) || [];
+  const items = (await getData(GENERAL_INVENTORY_KEY)) || [];
+  return items
+    .filter(
+      (item) =>
+        item && typeof item.itemName === "string" && item.itemName.trim() !== ""
+    )
+    .map((item) => ({
+      ...item,
+      currentStock: Number(item.currentStock) || 0,
+      costPricePerUnit: Number(item.costPricePerUnit) || 0,
+      sellingPricePerUnit: Number(item.sellingPricePerUnit) || 0,
+    }));
 };
 
 export const saveGeneralInventoryItem = async (itemToSave) => {
   try {
-    let currentInventory = await getGeneralInventoryItems(); // Get existing items
+    if (
+      !itemToSave ||
+      typeof itemToSave.itemName !== "string" ||
+      itemToSave.itemName.trim() === ""
+    ) {
+      throw new Error("Item name is required and must be a valid string.");
+    }
+
+    let currentInventory = await getGeneralInventoryItems();
 
     let updatedInventory;
-    if (
-      itemToSave.itemName &&
-      currentInventory.find(
-        (item) =>
-          item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()
-      )
-    ) {
-      // If itemToSave has an itemName and an item with that name already exists, it's an update
-      updatedInventory = currentInventory.map((item) =>
-        item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()
-          ? { ...item, ...itemToSave, lastUpdated: Date.now() }
+    const existingItemIndex = currentInventory.findIndex(
+      (item) =>
+        (item.itemName &&
+          item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()) ||
+        (itemToSave.originalItemName &&
+          item.itemName &&
+          item.itemName.toLowerCase() ===
+            itemToSave.originalItemName.toLowerCase())
+    );
+
+    if (existingItemIndex !== -1) {
+      updatedInventory = currentInventory.map((item, index) =>
+        index === existingItemIndex
+          ? {
+              ...item,
+              itemName: itemToSave.itemName,
+              currentStock: Number(itemToSave.currentStock) || 0,
+              costPricePerUnit:
+                Number(item.costPricePerUnit) ||
+                Number(itemToSave.costPricePerUnit) ||
+                0,
+              sellingPricePerUnit:
+                Number(item.sellingPricePerUnit) ||
+                Number(itemToSave.sellingPricePerUnit) ||
+                0,
+              lastUpdated: Date.now(),
+            }
           : item
       );
       console.log(
@@ -471,13 +563,12 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
         itemToSave.itemName
       );
     } else {
-      // Otherwise, it's a new item
       const newItem = {
-        id: Date.now().toString(), // Simple unique ID for new items
+        id: Date.now().toString(),
         itemName: itemToSave.itemName,
-        currentStock: itemToSave.currentStock || 0, // Default to 0 if not provided
-        costPricePerUnit: itemToSave.costPricePerUnit || 0,
-        sellingPricePerUnit: itemToSave.sellingPricePerUnit || 0,
+        currentStock: Number(itemToSave.currentStock) || 0,
+        costPricePerUnit: Number(itemToSave.costPricePerUnit) || 0,
+        sellingPricePerUnit: Number(itemToSave.sellingPricePerUnit) || 0,
         createdAt: Date.now(),
         lastUpdated: Date.now(),
       };
@@ -490,19 +581,27 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
     return true;
   } catch (error) {
     console.error("Error saving general inventory item:", error);
-    throw error; // Re-throw the error for the calling screen to handle
+    throw error;
   }
 };
 
-// EXPORT saveInventoryItem for ManageItemScreen
-// This function now acts as an alias or a direct call to saveGeneralInventoryItem
+// EXPORT saveInventoryItem for ManageItemScreen (alias)
 export const saveInventoryItem = saveGeneralInventoryItem;
 
 export const updateGeneralInventoryItem = async (updatedItem) => {
   try {
+    if (
+      !updatedItem ||
+      typeof updatedItem.itemName !== "string" ||
+      updatedItem.itemName.trim() === ""
+    ) {
+      throw new Error("Item name is required for update.");
+    }
+
     const currentInventory = await getGeneralInventoryItems();
     const itemIndex = currentInventory.findIndex(
       (item) =>
+        item.itemName &&
         item.itemName.toLowerCase() === updatedItem.itemName.toLowerCase()
     );
 
@@ -517,6 +616,9 @@ export const updateGeneralInventoryItem = async (updatedItem) => {
     newInventory[itemIndex] = {
       ...newInventory[itemIndex],
       ...updatedItem,
+      currentStock: Number(updatedItem.currentStock) || 0,
+      costPricePerUnit: Number(updatedItem.costPricePerUnit) || 0,
+      sellingPricePerUnit: Number(updatedItem.sellingPricePerUnit) || 0,
       lastUpdated: Date.now(),
     };
     await saveData(GENERAL_INVENTORY_KEY, newInventory);
@@ -524,22 +626,26 @@ export const updateGeneralInventoryItem = async (updatedItem) => {
     return true;
   } catch (error) {
     console.error("Error updating general inventory item:", error);
-    return false;
+    throw error;
   }
 };
 
 export const deleteGeneralInventoryItem = async (itemName) => {
   try {
+    if (typeof itemName !== "string" || itemName.trim() === "") {
+      throw new Error("Item name is required for deletion.");
+    }
     const currentInventory = await getGeneralInventoryItems();
     const filteredInventory = currentInventory.filter(
-      (item) => item.itemName.toLowerCase() !== itemName.toLowerCase()
+      (item) =>
+        item.itemName && item.itemName.toLowerCase() !== itemName.toLowerCase()
     );
     await saveData(GENERAL_INVENTORY_KEY, filteredInventory);
     console.log(`General inventory item '${itemName}' deleted.`);
     return true;
   } catch (error) {
     console.error("Error deleting general inventory item:", error);
-    return false;
+    throw error;
   }
 };
 
@@ -547,17 +653,41 @@ export const clearGeneralInventory = async () => {
   return await saveData(GENERAL_INVENTORY_KEY, []);
 };
 
-// --- MOBILE MONEY FLOAT MANAGEMENT FUNCTIONS (These were already for E-Value) ---
+// --- MOBILE MONEY FLOAT MANAGEMENT FUNCTIONS ---
 
 export const getFloatEntries = async () => {
-  return (await getData(MOBILE_MONEY_FLOAT_KEY)) || [];
+  const entries = (await getData(MOBILE_MONEY_FLOAT_KEY)) || [];
+  return entries
+    .filter(
+      (entry) =>
+        entry &&
+        typeof entry.itemName === "string" &&
+        entry.itemName.trim() !== ""
+    )
+    .map((entry) => ({
+      ...entry,
+      currentStock: Number(entry.currentStock) || 0,
+      costPricePerUnit: Number(entry.costPricePerUnit) || 0,
+      sellingPricePerUnit: Number(entry.sellingPricePerUnit) || 0,
+    }));
 };
 
 export const saveFloatEntry = async (newFloat) => {
   try {
+    if (
+      !newFloat ||
+      typeof newFloat.itemName !== "string" ||
+      newFloat.itemName.trim() === ""
+    ) {
+      throw new Error(
+        "Float item name is required and must be a valid string."
+      );
+    }
+
     const currentFloat = await getFloatEntries();
     const existingFloatIndex = currentFloat.findIndex(
       (entry) =>
+        entry.itemName &&
         entry.itemName.toLowerCase() === newFloat.itemName.toLowerCase()
     );
 
@@ -566,6 +696,9 @@ export const saveFloatEntry = async (newFloat) => {
       updatedFloat[existingFloatIndex] = {
         ...updatedFloat[existingFloatIndex],
         ...newFloat,
+        currentStock: Number(newFloat.currentStock) || 0,
+        costPricePerUnit: Number(newFloat.costPricePerUnit) || 0,
+        sellingPricePerUnit: Number(newFloat.sellingPricePerUnit) || 0,
         lastUpdated: Date.now(),
       };
       await saveData(MOBILE_MONEY_FLOAT_KEY, updatedFloat);
@@ -574,7 +707,14 @@ export const saveFloatEntry = async (newFloat) => {
     } else {
       const floatToSave = [
         ...currentFloat,
-        { ...newFloat, id: Date.now().toString(), lastUpdated: Date.now() }, // Add ID for new entries
+        {
+          ...newFloat,
+          id: Date.now().toString(),
+          currentStock: Number(newFloat.currentStock) || 0,
+          costPricePerUnit: Number(newFloat.costPricePerUnit) || 0,
+          sellingPricePerUnit: Number(newFloat.sellingPricePerUnit) || 0,
+          lastUpdated: Date.now(),
+        },
       ];
       await saveData(MOBILE_MONEY_FLOAT_KEY, floatToSave);
       console.log(`Float entry '${newFloat.itemName}' added.`);
@@ -582,15 +722,24 @@ export const saveFloatEntry = async (newFloat) => {
     }
   } catch (error) {
     console.error("Error saving float entry:", error);
-    return false;
+    throw error;
   }
 };
 
 export const updateFloatEntry = async (updatedFloat) => {
   try {
+    if (
+      !updatedFloat ||
+      typeof updatedFloat.itemName !== "string" ||
+      updatedFloat.itemName.trim() === ""
+    ) {
+      throw new Error("Float item name is required for update.");
+    }
+
     const currentFloat = await getFloatEntries();
     const floatIndex = currentFloat.findIndex(
       (entry) =>
+        entry.itemName &&
         entry.itemName.toLowerCase() === updatedFloat.itemName.toLowerCase()
     );
 
@@ -605,6 +754,9 @@ export const updateFloatEntry = async (updatedFloat) => {
     newFloat[floatIndex] = {
       ...newFloat[floatIndex],
       ...updatedFloat,
+      currentStock: Number(updatedFloat.currentStock) || 0,
+      costPricePerUnit: Number(updatedFloat.costPricePerUnit) || 0,
+      sellingPricePerUnit: Number(updatedFloat.sellingPricePerUnit) || 0,
       lastUpdated: Date.now(),
     };
     await saveData(MOBILE_MONEY_FLOAT_KEY, newFloat);
@@ -612,22 +764,27 @@ export const updateFloatEntry = async (updatedFloat) => {
     return true;
   } catch (error) {
     console.error("Error updating float entry:", error);
-    return false;
+    throw error;
   }
 };
 
 export const deleteFloatEntry = async (itemName) => {
   try {
+    if (typeof itemName !== "string" || itemName.trim() === "") {
+      throw new Error("Float item name is required for deletion.");
+    }
     const currentFloat = await getFloatEntries();
     const filteredFloat = currentFloat.filter(
-      (entry) => entry.itemName.toLowerCase() !== itemName.toLowerCase()
+      (entry) =>
+        entry.itemName &&
+        entry.itemName.toLowerCase() !== itemName.toLowerCase()
     );
     await saveData(MOBILE_MONEY_FLOAT_KEY, filteredFloat);
     console.log(`Float entry '${itemName}' deleted.`);
     return true;
   } catch (error) {
     console.error("Error deleting float entry:", error);
-    return false;
+    throw error;
   }
 };
 
@@ -635,32 +792,71 @@ export const clearFloatEntries = async () => {
   return await saveData(MOBILE_MONEY_FLOAT_KEY, []);
 };
 
-// --- NEW: Dedicated Physical Cash Functions ---
+// --- Dedicated Physical Cash Functions ---
 
 export const getPhysicalCash = async () => {
   try {
     const value = await AsyncStorage.getItem(PHYSICAL_CASH_KEY);
-    // Parse as float, default to 0 if null or invalid
     return value != null ? parseFloat(value) : 0;
   } catch (e) {
     console.error("Failed to fetch physical cash:", e);
-    return 0; // Return 0 on error
+    return 0;
   }
 };
 
 export const savePhysicalCash = async (amount) => {
   try {
-    const stringValue = amount.toString();
+    const stringValue = String(Number(amount));
     await AsyncStorage.setItem(PHYSICAL_CASH_KEY, stringValue);
     return true;
   } catch (e) {
     console.error("Failed to save physical cash:", e);
-    throw e; // Re-throw to be handled by calling component
+    throw e;
   }
 };
 
 export const clearPhysicalCash = async () => {
-  return await savePhysicalCash(0); // Set physical cash to 0
+  return await savePhysicalCash(0);
+};
+
+// --- Dedicated Commission Earnings Functions ---
+
+/**
+ * Retrieves the total accumulated commission earnings.
+ * @returns {Promise<number>} The total commission earned.
+ */
+export const getCommissionEarnings = async () => {
+  try {
+    const value = await AsyncStorage.getItem(COMMISSION_EARNINGS_KEY);
+    return value != null ? parseFloat(value) : 0;
+  } catch (e) {
+    console.error("Failed to fetch commission earnings:", e);
+    return 0;
+  }
+};
+
+/**
+ * Saves the total accumulated commission earnings.
+ * @param {number} amount - The total commission amount to save.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
+export const saveCommissionEarnings = async (amount) => {
+  try {
+    const stringValue = String(Number(amount));
+    await AsyncStorage.setItem(COMMISSION_EARNINGS_KEY, stringValue);
+    return true;
+  } catch (e) {
+    console.error("Failed to save commission earnings:", e);
+    throw e;
+  }
+};
+
+/**
+ * Resets the total commission earnings to 0.
+ * @returns {Promise<boolean>} True if successful, false otherwise.
+ */
+export const clearCommissionEarnings = async () => {
+  return await saveCommissionEarnings(0);
 };
 
 // Optional: For complete data clearing (for development/testing)

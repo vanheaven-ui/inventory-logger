@@ -13,12 +13,13 @@ import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import {
-  getGeneralInventoryItems, // New: For general shop inventory
-  deleteGeneralInventoryItem, // New: For general shop inventory
-  clearGeneralInventory, // New: For general shop inventory
-  getFloatEntries, // New: For mobile money float
-  deleteFloatEntry, // New: For mobile money float
-  clearFloatEntries, // New: For mobile money float
+  getGeneralInventoryItems, // For general shop inventory
+  deleteGeneralInventoryItem, // For general shop inventory
+  clearGeneralInventory, // For general shop inventory
+  getFloatEntries, // For mobile money float
+  deleteFloatEntry, // For mobile money float
+  clearFloatEntries, // For mobile money float
+  getPhysicalCash, // <--- NEW: Import getPhysicalCash
 } from "../storage/transactionStorage";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -49,17 +50,41 @@ export default function InventoryScreen() {
     }
   }, []);
 
-  const loadData = useCallback(async () => { // Renamed from loadInventory to loadData
+  const loadData = useCallback(async () => {
     console.log("InventoryScreen: Starting loadData...");
     setLoading(true);
     try {
       let items = [];
+      let calculatedTotalSales = 0; // Will be total E-Value for agent, total sales for shop
+      let calculatedTotalCost = 0; // Declared here to be accessible throughout the function
+
       if (isMobileMoneyAgent) {
         items = await getFloatEntries(); // Get float entries for agent
+        const physicalCash = await getPhysicalCash(); // Get physical cash
+        setTotalCostValue(physicalCash); // Set totalCostValue to physical cash
+        calculatedTotalCost = physicalCash; // Also assign to local variable for logging
+
         console.log("InventoryScreen: Loaded float entries:", items);
+        console.log("InventoryScreen: Loaded Physical Cash:", physicalCash);
+
+        // For agent, totalSalesValue is sum of current E-Value (float on phone)
+        items.forEach((item) => {
+          calculatedTotalSales += item.currentStock || 0;
+        });
+        setTotalSalesValue(calculatedTotalSales); // Update total sales for agent (E-value)
       } else {
         items = await getGeneralInventoryItems(); // Get general inventory for shop
         console.log("InventoryScreen: Loaded general inventory items:", items);
+
+        // For shop, calculate both total cost and total sales from individual items
+        items.forEach((item) => {
+          calculatedTotalCost +=
+            (item.currentStock || 0) * (item.costPricePerUnit || 0);
+          calculatedTotalSales +=
+            (item.currentStock || 0) * (item.sellingPricePerUnit || 0);
+        });
+        setTotalCostValue(calculatedTotalCost); // Update total cost for shop
+        setTotalSalesValue(calculatedTotalSales); // Update total sales for shop
       }
 
       const processedItems = items.map((item) => {
@@ -81,36 +106,8 @@ export default function InventoryScreen() {
       const sortedItems = processedItems.sort((a, b) =>
         a.itemName.localeCompare(b.itemName)
       );
-      setDisplayedItems(sortedItems); // Use displayedItems
+      setDisplayedItems(sortedItems);
       console.log("InventoryScreen: Processed and sorted items set.");
-
-      let calculatedTotalCost = 0;
-      let calculatedTotalSales = 0;
-
-      sortedItems.forEach((item) => {
-        if (isMobileMoneyAgent) {
-          // --- Logic for Mobile Money Agent Float ---
-          // calculatedTotalCost: Sum of initial physical cash invested for each float network.
-          // This assumes `item.costPricePerUnit` for float entries represents the *total initial physical cash*
-          // that was used to acquire the float for that specific network.
-          calculatedTotalCost += (item.costPricePerUnit || 0);
-
-          // calculatedTotalSales: Sum of current E-Value (electronic money) balance across all networks.
-          calculatedTotalSales += item.currentStock || 0;
-        } else {
-          // --- Logic for General Shop Inventory ---
-          // currentStock is quantity of items
-          // costPricePerUnit is cost per item
-          // sellingPricePerUnit is selling price per item
-          calculatedTotalCost +=
-            (item.currentStock || 0) * (item.costPricePerUnit || 0);
-          calculatedTotalSales +=
-            (item.currentStock || 0) * (item.sellingPricePerUnit || 0);
-        }
-      });
-
-      setTotalCostValue(calculatedTotalCost);
-      setTotalSalesValue(calculatedTotalSales);
 
       console.log(
         `InventoryScreen: Total Cost Value: UGX ${calculatedTotalCost.toLocaleString()}, Total Sales Value: UGX ${calculatedTotalSales.toLocaleString()}`
@@ -125,7 +122,7 @@ export default function InventoryScreen() {
       setLoading(false);
       console.log("InventoryScreen: Finished loadData.");
     }
-  }, [t, isMobileMoneyAgent]); // Added isMobileMoneyAgent to dependencies
+  }, [t, isMobileMoneyAgent]);
 
   // Use useFocusEffect to reload data and agent status whenever the screen comes into focus
   useFocusEffect(
@@ -139,9 +136,10 @@ export default function InventoryScreen() {
     }, [loadAgentStatus, loadData]) // Depend on memoized load functions
   );
 
-  const handleDeleteItem = async (itemId) => { // This now handles both inventory and float deletion
+  const handleDeleteItem = async (itemName) => {
+    // Changed from itemId to itemName to match storage function
     console.log(
-      `InventoryScreen: Attempting to delete item with ID: ${itemId}`
+      `InventoryScreen: Attempting to delete item with Name: ${itemName}` // Log itemName
     );
     Alert.alert(
       t("confirm_delete"),
@@ -157,21 +155,19 @@ export default function InventoryScreen() {
           onPress: async () => {
             try {
               console.log(
-                `InventoryScreen: Confirmed delete for ID: ${itemId}`
+                `InventoryScreen: Confirmed delete for Name: ${itemName}` // Log itemName
               );
               if (isMobileMoneyAgent) {
-                await deleteFloatEntry(itemId); // Delete from float storage
+                await deleteFloatEntry(itemName); // Delete from float storage by name
               } else {
-                await deleteGeneralInventoryItem(itemId); // Delete from general inventory storage
+                await deleteGeneralInventoryItem(itemName); // Delete from general inventory storage by name
               }
               Toast.show({
                 type: "success",
                 text1: t("item_deleted"),
               });
               loadData(); // Reload data after delete
-              console.log(
-                "InventoryScreen: loadData called after delete."
-              );
+              console.log("InventoryScreen: loadData called after delete.");
             } catch (error) {
               console.error("InventoryScreen: Error deleting item:", error);
               Toast.show({
@@ -187,11 +183,15 @@ export default function InventoryScreen() {
     );
   };
 
-  const handleClearAll = () => { // Renamed from handleClearAllInventory
+  const handleClearAll = () => {
     console.log("InventoryScreen: Initiating clear all process.");
     Alert.alert(
-      isMobileMoneyAgent ? t("confirm_clear_float_title") : t("confirm_clear_inventory_title"),
-      isMobileMoneyAgent ? t("confirm_clear_float_message") : t("confirm_clear_inventory_message"),
+      isMobileMoneyAgent
+        ? t("confirm_clear_float_title")
+        : t("confirm_clear_inventory_title"),
+      isMobileMoneyAgent
+        ? t("confirm_clear_float_message")
+        : t("confirm_clear_inventory_message"),
       [
         {
           text: t("cancel"),
@@ -206,25 +206,24 @@ export default function InventoryScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              console.log(
-                "InventoryScreen: User confirmed clearing all."
-              );
+              console.log("InventoryScreen: User confirmed clearing all.");
               if (isMobileMoneyAgent) {
                 await clearFloatEntries(); // Clear float entries
-                Toast.show({ type: "success", text1: t("float_cleared_success") });
+                Toast.show({
+                  type: "success",
+                  text1: t("float_cleared_success"),
+                });
               } else {
                 await clearGeneralInventory(); // Clear general inventory
-                Toast.show({ type: "success", text1: t("inventory_cleared_success") });
+                Toast.show({
+                  type: "success",
+                  text1: t("inventory_cleared_success"),
+                });
               }
               loadData(); // Reload to show empty list
-              console.log(
-                "InventoryScreen: All data cleared and UI reloaded."
-              );
+              console.log("InventoryScreen: All data cleared and UI reloaded.");
             } catch (error) {
-              console.error(
-                "InventoryScreen: Error clearing all data:",
-                error
-              );
+              console.error("InventoryScreen: Error clearing all data:", error);
               Toast.show({
                 type: "error",
                 text1: t("clear_error"),
@@ -251,15 +250,18 @@ export default function InventoryScreen() {
           {item.currentStock.toLocaleString()} {/* Format number */}
         </Text>
         {/* Dynamic Cost Price/Initial Float Value */}
+        {/* For Mobile Money, this `costPricePerUnit` on the float item represents the *initial physical cash allocated to that specific float*.
+            It's not the TOTAL physical cash. The TOTAL physical cash is displayed at the top. */}
         <Text style={styles.itemPrice}>
-          {isMobileMoneyAgent ? t("initial_float_value") : t("cost_price")}: UGX{" "}
-          {(item.costPricePerUnit || 0).toLocaleString()}
+          {isMobileMoneyAgent
+            ? t("physical_cash_allocated_to_float")
+            : t("cost_price")}
+          : UGX {(item.costPricePerUnit || 0).toLocaleString()}
         </Text>
         {/* Dynamic Selling Price/Fee Per Transaction */}
         <Text style={styles.itemPrice}>
           {isMobileMoneyAgent ? t("fee_per_transaction") : t("selling_price")}:
-          UGX{" "}
-          {(item.sellingPricePerUnit || 0).toLocaleString()}
+          UGX {(item.sellingPricePerUnit || 0).toLocaleString()}
         </Text>
         {/* Dynamic Calculated Values for each item/network - REMOVED FOR AGENT FOR CLARITY */}
         {!isMobileMoneyAgent && ( // Only show for general shop
@@ -284,8 +286,8 @@ export default function InventoryScreen() {
           style={styles.editButton}
           onPress={() =>
             navigation.navigate(
-              isMobileMoneyAgent ? "ManageFloat" : "ManageItem", // Navigate to correct management screen
-              { item: item }
+              isMobileMoneyAgent ? "ManageFloat" : "ManageItemScreen",
+              { itemToEdit: item }
             )
           }
         >
@@ -293,7 +295,7 @@ export default function InventoryScreen() {
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.deleteButton}
-          onPress={() => handleDeleteItem(item.itemName)} 
+          onPress={() => handleDeleteItem(item.itemName)}
         >
           <Icon name="delete" size={20} color="#fff" />
         </TouchableOpacity>
@@ -310,7 +312,9 @@ export default function InventoryScreen() {
         </Text>
         <TouchableOpacity
           onPress={() =>
-            navigation.navigate(isMobileMoneyAgent ? "ManageFloat" : "ManageItem")
+            navigation.navigate(
+              isMobileMoneyAgent ? "ManageFloat" : "ManageItemScreen"
+            )
           }
           style={styles.addButton}
         >
@@ -322,9 +326,10 @@ export default function InventoryScreen() {
         <View style={styles.totalValueContainer}>
           <View style={styles.totalValueCard}>
             <Text style={styles.totalValueLabel}>
-              {isMobileMoneyAgent
-                ? t("total_physical_cash") // For Agent
-                : t("inventory_value_cost") // For Shop
+              {
+                isMobileMoneyAgent
+                  ? t("total_physical_cash") // For Agent
+                  : t("inventory_value_cost") // For Shop
               }
             </Text>
             <Text style={styles.totalValueText}>
@@ -333,9 +338,10 @@ export default function InventoryScreen() {
           </View>
           <View style={styles.totalValueCard}>
             <Text style={styles.totalValueLabel}>
-              {isMobileMoneyAgent
-                ? t("total_e_value_float") // For Agent
-                : t("inventory_value_sales") // For Shop
+              {
+                isMobileMoneyAgent
+                  ? t("total_e_value_float") // For Agent
+                  : t("inventory_value_sales") // For Shop
               }
             </Text>
             <Text style={styles.totalValueText}>
@@ -348,7 +354,7 @@ export default function InventoryScreen() {
         {!loading && displayedItems.length > 0 && (
           <TouchableOpacity
             style={styles.clearAllButton}
-            onPress={handleClearAll} // Renamed to handleClearAll
+            onPress={handleClearAll}
           >
             <Text style={styles.clearAllButtonText}>
               {isMobileMoneyAgent
@@ -372,7 +378,7 @@ export default function InventoryScreen() {
           </Text>
         ) : (
           <FlatList
-            data={displayedItems} // Use displayedItems
+            data={displayedItems}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}

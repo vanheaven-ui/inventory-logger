@@ -109,8 +109,7 @@ export default function HomeScreen() {
         <View style={styles.appTitleContainerExt}>
           <Text style={styles.heading}>{t("app_name")}</Text>
           <View style={styles.logoContainer}>
-            <FontAwesome5 name="handshake" size={30} color={Colors.white} />{" "}
-            {/* Reduced size */}
+            <FontAwesome5 name="handshake" size={30} color={Colors.white} />
           </View>
         </View>
       </View>

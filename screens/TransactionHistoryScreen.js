@@ -8,11 +8,13 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Alert,
+  Platform,
+  StatusBar,
 } from "react-native";
 import { useLanguage } from "../context/LanguageContext";
 import {
   getTransactions,
-  clearTransactions,
+  saveTransaction, // Make sure this is correctly imported and available
 } from "../storage/transactionStorage";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
@@ -24,28 +26,27 @@ const IS_AGENT_KEY = "isMobileMoneyAgent";
 
 export default function TransactionHistoryScreen() {
   const navigation = useNavigation();
-  // State to hold transactions for each category internally
-  const [mobileMoneyTransactions, setMobileMoneyTransactions] = useState([]);
-  const [generalShopTransactions, setGeneralShopTransactions] = useState([]);
+  const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(false);
-  // This state is now the single source of truth for the active mode
   const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
   const { t } = useLanguage();
 
-  // Load agent status from AsyncStorage
-  // This function sets the global mode for the app
   const loadAgentStatus = useCallback(async () => {
     try {
       const storedStatus = await AsyncStorage.getItem(IS_AGENT_KEY);
       if (storedStatus !== null) {
         setIsMobileMoneyAgent(JSON.parse(storedStatus));
       } else {
-        setIsMobileMoneyAgent(false); // Default to false if not found
+        setIsMobileMoneyAgent(false);
       }
     } catch (error) {
       console.error("HistoryScreen: Failed to load agent status:", error);
+      Toast.show({
+        type: "error",
+        text1: t("error_loading_settings"),
+      });
     }
-  }, []);
+  }, [t]);
 
   const loadTransactions = useCallback(async () => {
     setLoading(true);
@@ -53,7 +54,6 @@ export default function TransactionHistoryScreen() {
       const stored = await getTransactions();
       console.log("TransactionHistoryScreen: Loaded all transactions:", stored);
 
-      // Filter out transactions where quantity is 0 or undefined/null
       const validTransactions = stored.filter(
         (item) =>
           item.quantity !== undefined &&
@@ -61,22 +61,8 @@ export default function TransactionHistoryScreen() {
           item.quantity !== 0
       );
 
-      // Separate transactions into two categories
-      const mobileMoneyTxns = validTransactions.filter(
-        (item) => item.isMobileMoney
-      );
-      const generalShopTxns = validTransactions.filter(
-        (item) => !item.isMobileMoney
-      );
-
-      // Sort by newest first for both categories
-      setMobileMoneyTransactions(
-        mobileMoneyTxns.sort(
-          (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
-        )
-      );
-      setGeneralShopTransactions(
-        generalShopTxns.sort(
+      setTransactions(
+        validTransactions.sort(
           (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
         )
       );
@@ -94,21 +80,17 @@ export default function TransactionHistoryScreen() {
     }
   }, [t]);
 
-  // Use useFocusEffect to reload data and agent status whenever the screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      loadAgentStatus(); // This sets the isMobileMoneyAgent status
-      loadTransactions(); // This loads and separates all transactions
+      loadAgentStatus();
+      loadTransactions();
       return () => {
-        // Optional: Perform actions when the screen is unfocused
+        // Optional cleanup
       };
     }, [loadAgentStatus, loadTransactions])
   );
 
-  const handleClearHistory = () => {
-    console.log(
-      "TransactionHistoryScreen: Initiating clear all history process."
-    );
+  const handleClearHistory = useCallback(() => {
     Alert.alert(
       t("confirm_clear_history_title"),
       t("confirm_clear_history_message"),
@@ -116,33 +98,42 @@ export default function TransactionHistoryScreen() {
         {
           text: t("cancel"),
           style: "cancel",
-          onPress: () => {
-            console.log("Clear history cancelled.");
-            Toast.show({ type: "info", text1: t("clear_history_cancelled") });
-          },
+          onPress: () =>
+            Toast.show({ type: "info", text1: t("clear_history_cancelled") }),
         },
         {
-          text: t("clear_all"),
+          text: t("clear_all"), // This text implies clearing 'all' of the CURRENT TYPE
           style: "destructive",
           onPress: async () => {
             try {
-              console.log(
-                "TransactionHistoryScreen: User confirmed clearing all history."
-              );
-              await clearTransactions(); // Clears ALL transactions
-              Toast.show({
-                type: "success",
-                text1: t("history_cleared_success"),
-              });
-              loadTransactions(); // Reload transactions to show empty history for both categories
-              console.log(
-                "TransactionHistoryScreen: All history cleared and UI reloaded."
-              );
+              const allStoredTransactions = await getTransactions();
+              let transactionsToKeep = [];
+
+              if (isMobileMoneyAgent) {
+                // If agent, CLEAR mobile money history, so KEEP non-mobile money transactions
+                transactionsToKeep = allStoredTransactions.filter(
+                  (item) => !item.isMobileMoney
+                );
+                Toast.show({
+                  type: "success",
+                  text1: t("mobile_money_history_cleared_success"),
+                });
+              } else {
+                // If not agent (general shop), CLEAR general shop history, so KEEP mobile money transactions
+                transactionsToKeep = allStoredTransactions.filter(
+                  (item) => item.isMobileMoney
+                );
+                Toast.show({
+                  type: "success",
+                  text1: t("general_shop_history_cleared_success"),
+                });
+              }
+
+              // Save the filtered list (which now contains only the transactions you want to KEEP)
+              await saveTransaction(transactionsToKeep);
+              loadTransactions(); // Reload transactions to update the UI
             } catch (error) {
-              console.error(
-                "TransactionHistoryScreen: Error clearing all history:",
-                error
-              );
+              console.error("Error clearing history:", error);
               Toast.show({
                 type: "error",
                 text1: t("history_cleared_error"),
@@ -153,100 +144,97 @@ export default function TransactionHistoryScreen() {
       ],
       { cancelable: true }
     );
-  };
+  }, [isMobileMoneyAgent, t, loadTransactions]); // Make sure saveTransactions is in the dependency array if it was defined outside of the component
 
-  const renderItem = ({ item }) => {
-    // Determine the transaction type label based on whether THIS ITEM is Mobile Money
-    const typeLabel = item.isMobileMoney
-      ? item.type === "sell"
-        ? t("withdrew_amount") // For agent: Withdrawal
-        : t("deposited_amount") // For agent: Deposit
-      : item.type === "sell"
-      ? t("sold_quantity") // For shop: Sold
-      : t("restocked_quantity"); // For shop: Restocked
+  const renderItem = useCallback(
+    ({ item }) => {
+      const typeLabel = item.isMobileMoney
+        ? item.type === "sell"
+          ? t("withdrew_amount")
+          : t("deposited_amount")
+        : item.type === "sell"
+        ? t("sold_quantity")
+        : t("restocked_quantity");
 
-    // Determine the item/network name label based on whether THIS ITEM is Mobile Money
-    const nameLabel = item.isMobileMoney ? t("network") : t("item");
+      const nameLabel = item.isMobileMoney ? t("network") : t("item");
 
-    // Determine the amount/price/fee label based on whether THIS ITEM is Mobile Money
-    const amountLabel = item.isMobileMoney
-      ? item.type === "sell"
-        ? t("withdrawal_amount") // Specific for withdrawal amount
-        : t("deposit_amount") // Specific for deposit amount
-      : t("total_price"); // General shop item total price
+      const cardStyle =
+        item.type === "sell" ? styles.sellCard : styles.restockCard;
 
-    // Determine the unit label based on whether THIS ITEM is Mobile Money
-    const unitLabel = item.isMobileMoney ? t("UGX") : t("unit");
+      const quantity = item.quantity || 0;
+      const sellingPrice = item.sellingPrice || 0;
+      const costPrice = item.costPrice || 0;
+      const commissionEarned = item.commissionEarned || 0;
+      const amount = item.amount || 0;
 
-    // Conditional styling based on transaction type
-    const cardStyle =
-      item.type === "sell" ? styles.sellCard : styles.restockCard;
+      return (
+        <View style={[styles.itemCard, cardStyle]}>
+          <Text style={styles.itemName}>
+            {nameLabel}: {item.itemName}
+          </Text>
 
-    // Ensure numeric values are numbers before formatting
-    const quantity = item.quantity || 0;
-    const sellingPrice = item.sellingPrice || 0;
-    const costPrice = item.costPrice || 0;
-    const commissionEarned = item.commissionEarned || 0;
-
-    return (
-      <View style={[styles.itemCard, cardStyle]}>
-        <Text style={styles.itemName}>
-          {nameLabel}: {item.itemName}
-        </Text>
-
-        {item.isMobileMoney ? ( // Render Mobile Money specific details if the item is Mobile Money
-          <>
-            <Text style={styles.details}>
-              <Text style={styles.typeLabel}>{typeLabel}:</Text>{" "}
-              {quantity.toLocaleString()} UGX
-            </Text>
-            {item.commissionEarned !== undefined && (
-              <Text style={styles.commissionDetails}>
-                {t("commission_earned")}: UGX{" "}
-                {commissionEarned.toLocaleString()}
+          {item.isMobileMoney ? (
+            <>
+              <Text style={styles.details}>
+                <Text style={styles.typeLabel}>{typeLabel}:</Text>{" "}
+                {amount.toLocaleString()} UGX
               </Text>
-            )}
-          </>
-        ) : (
-          // Render General Shop specific details if the item is General Shop
-          <>
-            <Text style={styles.details}>
-              <Text style={styles.typeLabel}>{typeLabel}:</Text> {quantity}{" "}
-              {t("units")}
-            </Text>
-            {item.type === "sell" && item.sellingPrice !== undefined && (
-              <Text style={styles.priceDetails}>
-                {amountLabel}: UGX {(sellingPrice * quantity).toLocaleString()}{" "}
-                (UGX {sellingPrice.toLocaleString()} / {unitLabel})
+              {item.commissionEarned !== undefined &&
+                item.commissionEarned !== null && (
+                  <Text style={styles.commissionDetails}>
+                    {t("commission_earned")}: UGX{" "}
+                    {commissionEarned.toLocaleString()}
+                  </Text>
+                )}
+            </>
+          ) : (
+            <>
+              <Text style={styles.details}>
+                <Text style={styles.typeLabel}>{typeLabel}:</Text> {quantity}{" "}
+                {t("units")}
               </Text>
-            )}
-            {item.type === "restock" && item.costPrice !== undefined && (
-              <Text style={styles.priceDetails}>
-                {amountLabel}: UGX {(costPrice * quantity).toLocaleString()}{" "}
-                (UGX {costPrice.toLocaleString()} / {unitLabel})
-              </Text>
-            )}
-          </>
-        )}
+              {item.type === "sell" && sellingPrice > 0 && (
+                <Text style={styles.priceDetails}>
+                  {t("total_price")}: UGX{" "}
+                  {(sellingPrice * quantity).toLocaleString()} (UGX{" "}
+                  {sellingPrice.toLocaleString()} / {t("unit")})
+                </Text>
+              )}
+              {item.type === "restock" && costPrice > 0 && (
+                <Text style={styles.priceDetails}>
+                  {t("total_cost")}: UGX
+                  {(costPrice * quantity).toLocaleString()} (UGX{" "}
+                  {costPrice.toLocaleString()} / {t("unit")})
+                </Text>
+              )}
+            </>
+          )}
 
-        <Text style={styles.timestamp}>
-          {item.timestamp
-            ? new Date(item.timestamp).toLocaleString()
-            : t("N/A")}
-        </Text>
-      </View>
-    );
-  };
+          <Text style={styles.timestamp}>
+            {item.timestamp
+              ? new Date(item.timestamp).toLocaleString("en-UG", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  hour12: true,
+                })
+              : t("N/A")}
+          </Text>
+        </View>
+      );
+    },
+    [t]
+  );
 
-  // Determine which set of transactions to display based on the global isMobileMoneyAgent status
-  const transactionsToDisplay = isMobileMoneyAgent
-    ? mobileMoneyTransactions
-    : generalShopTransactions;
+  const transactionsToDisplay = transactions.filter((item) =>
+    isMobileMoneyAgent ? item.isMobileMoney : !item.isMobileMoney
+  );
 
-  // Determine the header title based on the global isMobileMoneyAgent status
   const headerTitleText = isMobileMoneyAgent
     ? t("mobile_money_transactions")
-    : t("transaction_history"); // Assuming 'transaction_history' is for general shop
+    : t("general_shop_transactions");
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -254,15 +242,12 @@ export default function TransactionHistoryScreen() {
         <Text style={styles.headerTitle}>{headerTitleText}</Text>
       </View>
 
-      {/* REMOVED: The category toggle button/segmented control */}
-
       <View style={styles.container}>
-        {/* Clear All History Button - Only show if there are transactions and not loading */}
         {!loading && transactionsToDisplay.length > 0 && (
           <TouchableOpacity
             style={styles.clearAllButton}
             onPress={handleClearHistory}
-            disabled={loading} // Disable button while loading
+            disabled={loading}
           >
             <Text style={styles.clearAllButtonText}>
               {t("clear_history_button")}
@@ -285,7 +270,7 @@ export default function TransactionHistoryScreen() {
         ) : (
           <FlatList
             data={transactionsToDisplay}
-            keyExtractor={(item) => item.id || Math.random().toString()} // Fallback if ID is somehow missing
+            keyExtractor={(item) => item.id || Math.random().toString()}
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
             style={styles.fullWidthList}
@@ -300,13 +285,14 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#f6f6f6",
+    paddingTop: 0,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     paddingVertical: 20,
-    backgroundColor: "#6c757d", // Consistent with Home screen history button
+    backgroundColor: "#6c757d",
     borderBottomWidth: 1,
     borderBottomColor: "#5a6268",
     shadowColor: "#000",
@@ -323,7 +309,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
     paddingHorizontal: 40,
   },
-  // REMOVED categoryToggle styles as the component is removed
   container: {
     flex: 1,
     paddingHorizontal: 15,
@@ -331,7 +316,7 @@ const styles = StyleSheet.create({
     alignItems: "stretch",
   },
   clearAllButton: {
-    backgroundColor: "#dc3545", // Red color
+    backgroundColor: "#dc3545",
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: "center",
@@ -371,11 +356,11 @@ const styles = StyleSheet.create({
   },
   sellCard: {
     borderLeftWidth: 5,
-    borderLeftColor: "#d9534f", // Red for sales/withdrawals
+    borderLeftColor: "#d9534f",
   },
   restockCard: {
     borderLeftWidth: 5,
-    borderLeftColor: "#5cb85c", // Green for restocks/deposits
+    borderLeftColor: "#5cb85c",
   },
   itemName: {
     fontSize: 17,

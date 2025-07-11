@@ -22,30 +22,28 @@ import {
   getPhysicalCash,
   savePhysicalCash,
 } from "../storage/transactionStorage";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // Import AsyncStorage
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Key for AsyncStorage (ensure this is consistent with HomeScreen)
 const IS_AGENT_KEY = "isMobileMoneyAgent";
 
-// Define a default empty summary object for clarity and consistency
 const DEFAULT_SUMMARY_STATE = {
   sellCount: 0,
   restockCount: 0,
   totalSalesRevenue: 0,
   totalCostOfRestocks: 0,
   netProfitOrLoss: 0,
-  numberOfSalesTransactions: 0, // New: General sales count
-  numberOfRestockTransactions: 0, // New: General restock count
+  numberOfSalesTransactions: 0,
+  numberOfRestockTransactions: 0,
 };
 
 const DEFAULT_MOBILE_MONEY_SUMMARY_STATE = {
-  sellCount: 0, // Withdrawals count
-  restockCount: 0, // Deposits count
+  sellCount: 0,
+  restockCount: 0,
   totalTransactionValue: 0,
   totalCommissionEarned: 0,
   netProfitOrLoss: 0,
-  numberOfWithdrawalTransactions: 0, // New: Mobile Money withdrawal count
-  numberOfDepositTransactions: 0, // New: Mobile Money deposit count
+  numberOfWithdrawalTransactions: 0,
+  numberOfDepositTransactions: 0,
 };
 
 export default function SummaryScreen({ navigation }) {
@@ -57,7 +55,7 @@ export default function SummaryScreen({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [hasCalculatedSummary, setHasCalculatedSummary] = useState(false);
   const [lastResetDateDisplay, setLastResetDateDisplay] = useState("");
-  const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false); // New state for agent status
+  const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
   const { t } = useLanguage();
 
   const formatCurrency = useCallback((amount) => {
@@ -77,41 +75,36 @@ export default function SummaryScreen({ navigation }) {
       transactionsToProcess.length,
       "transactions."
     );
-    let genSellCount = 0; // Total quantity sold for general items
-    let genRestockCount = 0; // Total quantity restocked for general items
+    let genSellCount = 0;
+    let genRestockCount = 0;
     let genTotalSalesRevenue = 0;
     let genTotalCostOfRestocks = 0;
-    let genNumSalesTransactions = 0; // New: Number of distinct sales transactions
-    let genNumRestockTransactions = 0; // New: Number of distinct restock transactions
+    let genNumSalesTransactions = 0;
+    let genNumRestockTransactions = 0;
 
-    let mmSellCount = 0; // Withdrawals count (represents quantity of withdrawals if applicable or just count)
-    let mmRestockCount = 0; // Deposits count (represents quantity of deposits if applicable or just count)
+    let mmSellCount = 0;
+    let mmRestockCount = 0;
     let mmTotalTransactionValue = 0;
     let mmTotalCommissionEarned = 0;
-    let mmNumWithdrawalTransactions = 0; // New: Number of distinct withdrawal transactions
-    let mmNumDepositTransactions = 0; // New: Number of distinct deposit transactions
 
     transactionsToProcess.forEach((transaction) => {
       if (transaction.isMobileMoneyAgent) {
         if (transaction.type === "sell") {
-          mmSellCount++; // Increment count for each mobile money withdrawal transaction
+          mmSellCount++;
           mmTotalTransactionValue += transaction.amount || 0;
           mmTotalCommissionEarned += transaction.commissionEarned || 0;
-          mmNumWithdrawalTransactions++;
         } else if (transaction.type === "restock") {
-          mmRestockCount++; // Increment count for each mobile money deposit transaction
+          mmRestockCount++;
           mmTotalTransactionValue += transaction.amount || 0;
           mmTotalCommissionEarned += transaction.commissionEarned || 0;
-          mmNumDepositTransactions++;
         }
       } else {
-        // General Shop Transactions
         if (transaction.type === "sell") {
-          genSellCount += transaction.quantity || 1; // Sum quantities for general sales
+          genSellCount += transaction.quantity || 0;
           genTotalSalesRevenue += transaction.amount || 0;
           genNumSalesTransactions++;
         } else if (transaction.type === "restock") {
-          genRestockCount += transaction.quantity || 1; // Sum quantities for general restocks
+          genRestockCount += transaction.quantity || 0;
           genTotalCostOfRestocks += transaction.amount || 0;
           genNumRestockTransactions++;
         }
@@ -138,17 +131,15 @@ export default function SummaryScreen({ navigation }) {
       totalTransactionValue: mmTotalTransactionValue,
       totalCommissionEarned: mmTotalCommissionEarned,
       netProfitOrLoss: mmNetProfitOrLoss,
-      numberOfWithdrawalTransactions: mmNumWithdrawalTransactions,
-      numberOfDepositTransactions: mmNumDepositTransactions,
+      numberOfWithdrawalTransactions: mmSellCount,
+      numberOfDepositTransactions: mmRestockCount,
     };
 
-    // Set state variables
     setGeneralSummary(newGeneralSummary);
     setMobileMoneySummary(newMobileMoneySummary);
     setOverallNetProfitOrLoss(combinedNetProfitOrLoss);
     setHasCalculatedSummary(true);
 
-    // Construct the data to be saved
     const savedData = {
       generalSummary: newGeneralSummary,
       mobileMoneySummary: newMobileMoneySummary,
@@ -156,21 +147,19 @@ export default function SummaryScreen({ navigation }) {
       calculatedAt: Date.now(),
     };
 
-    // Explicitly save the data here!
     await saveDailySummaryData(savedData);
     console.log(
       "SummaryScreen: Calculated and saved new combined summary:",
       savedData
     );
 
-    return savedData; // Return the calculated data for immediate use by caller
+    return savedData;
   }, []);
 
   const loadData = useCallback(async () => {
     console.log("SummaryScreen: Starting loadData...");
     setLoading(true);
     try {
-      // Load agent status first
       const storedAgentStatus = await AsyncStorage.getItem(IS_AGENT_KEY);
       const agentStatus =
         storedAgentStatus !== null ? JSON.parse(storedAgentStatus) : false;
@@ -200,7 +189,6 @@ export default function SummaryScreen({ navigation }) {
         savedSummaryData.generalSummary &&
         savedSummaryData.mobileMoneySummary
       ) {
-        // Ensure that nested objects exist before setting state
         setGeneralSummary(savedSummaryData.generalSummary);
         setMobileMoneySummary(savedSummaryData.mobileMoneySummary);
         setOverallNetProfitOrLoss(savedSummaryData.overallNetProfitOrLoss || 0);
@@ -213,7 +201,6 @@ export default function SummaryScreen({ navigation }) {
         console.log(
           "SummaryScreen: No saved summary data found or incomplete. Recalculating from transactions."
         );
-        // If no saved summary, calculate from all transactions since last reset
         const allTransactions = await getTransactions();
         const transactionsSinceLastReset = allTransactions.filter(
           (transaction) => {
@@ -228,7 +215,6 @@ export default function SummaryScreen({ navigation }) {
             transactionsSinceLastReset.length +
             ")."
         );
-        // Call calculateAndSetSummary which will also save the data
         await calculateAndSetSummary(transactionsSinceLastReset);
       }
     } catch (error) {
@@ -237,25 +223,21 @@ export default function SummaryScreen({ navigation }) {
         type: "error",
         text1: t("error_loading_summary"),
       });
-      // Reset all summaries on error or if no data
       setGeneralSummary(DEFAULT_SUMMARY_STATE);
       setMobileMoneySummary(DEFAULT_MOBILE_MONEY_SUMMARY_STATE);
       setOverallNetProfitOrLoss(0);
-      setHasCalculatedSummary(false); // Make sure this is false if there's an error or no data
+      setHasCalculatedSummary(false);
     } finally {
       setLoading(false);
       console.log("SummaryScreen: Finished loadData.");
     }
-  }, [t, calculateAndSetSummary]); // calculateAndSetSummary is a dependency as it's called here
+  }, [t, calculateAndSetSummary]);
 
   useEffect(() => {
-    // This listener ensures loadData runs every time the screen comes into focus
     const unsubscribe = navigation.addListener("focus", () => {
       console.log("SummaryScreen: Focused. Loading data...");
       loadData();
     });
-
-    // Cleanup function
     return unsubscribe;
   }, [navigation, loadData]);
 
@@ -284,7 +266,6 @@ export default function SummaryScreen({ navigation }) {
 
               const lastResetTimestamp = await getLastSummaryResetTimestamp();
 
-              // Filter transactions for the current period *before* resetting the timestamp
               const relevantTransactions = transactionsData.filter(
                 (transaction) => {
                   const transactionTimestamp = new Date(
@@ -298,8 +279,6 @@ export default function SummaryScreen({ navigation }) {
                 relevantTransactions.length
               );
 
-              // Calculate the summary for the period that is about to close.
-              // This also updates the component's state and saves the data.
               const calculatedSummary = await calculateAndSetSummary(
                 relevantTransactions
               );
@@ -307,7 +286,6 @@ export default function SummaryScreen({ navigation }) {
                 "SummaryScreen (Close Business): Summary calculated for closing period."
               );
 
-              // Update the physical cash with the net profit/loss from the *just calculated* period.
               let currentPhysicalCash = await getPhysicalCash();
               const profitLossForPeriod =
                 calculatedSummary.overallNetProfitOrLoss;
@@ -319,7 +297,6 @@ export default function SummaryScreen({ navigation }) {
                 currentPhysicalCash
               );
 
-              // Now, set the new summary reset timestamp to mark the beginning of the next period.
               await setLastSummaryResetTimestamp(Date.now());
               console.log(
                 "SummaryScreen (Close Business): New summary reset timestamp set to now. New period begins."
@@ -329,13 +306,6 @@ export default function SummaryScreen({ navigation }) {
                 type: "success",
                 text1: t("close_business_success"),
               });
-
-              // After "closing business," the current screen should display the summary
-              // of the period that was just closed. The `calculateAndSetSummary` call above
-              // already updated the state, so the UI should reflect this.
-              // When the user next navigates to this screen, `loadData` will then pick up
-              // the *new* reset timestamp and show an empty summary for the new period.
-              // No explicit loadData() call needed here, as the state is already updated.
             } catch (error) {
               console.error(
                 "SummaryScreen: Error during Close Business process:",
@@ -353,77 +323,16 @@ export default function SummaryScreen({ navigation }) {
     );
   };
 
-  const handleResetSummary = () => {
-    console.log("SummaryScreen: Initiating Reset Summary process.");
-    Alert.alert(
-      t("confirm_reset_summary_title"),
-      t("confirm_reset_summary_message"),
-      [
-        {
-          text: t("cancel"),
-          style: "cancel",
-          onPress: () => {
-            console.log("Reset Summary cancelled.");
-            Toast.show({ type: "info", text1: t("reset_summary_cancelled") });
-          },
-        },
-        {
-          text: t("reset"),
-          style: "destructive",
-          onPress: async () => {
-            setLoading(true);
-            try {
-              await setLastSummaryResetTimestamp(0); // Reset to epoch, meaning calculate from all transactions
-              await saveDailySummaryData(null); // Clear saved summary
-              console.log(
-                "SummaryScreen: Summary reset timestamp and saved data cleared."
-              );
-
-              Toast.show({
-                type: "success",
-                text1: t("summary_reset_success"),
-              });
-              // After resetting, we want to load all transactions from the beginning
-              loadData();
-            } catch (error) {
-              console.error("SummaryScreen: Error resetting summary:", error);
-              Toast.show({
-                type: "error",
-                text1: t("summary_reset_error"),
-              });
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
-      ],
-      { cancelable: true }
-    );
-  };
-
-  const renderSummaryCard = (label, value) => (
-    <View style={styles.summaryCard}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
-    </View>
-  );
-
-  const renderTransactionValueCard = (label, amount) => (
-    <View style={styles.transactionValueCard}>
-      <Text style={styles.transactionValueLabel}>{label}</Text>
-      <Text style={styles.transactionValueText}>{formatCurrency(amount)}</Text>
-    </View>
-  );
-
-  const renderNetProfitCard = (label, amount) => (
+  const renderValueCard = (label, amount, isProfitLoss = false) => (
     <View
       style={[
-        styles.netProfitCard,
-        amount >= 0 ? styles.netProfitPositive : styles.netProfitNegative,
+        styles.valueCard,
+        isProfitLoss && amount >= 0 && styles.netProfitPositive,
+        isProfitLoss && amount < 0 && styles.netProfitNegative,
       ]}
     >
-      <Text style={styles.netProfitLabel}>{label}</Text>
-      <Text style={styles.netProfitValue}>{formatCurrency(amount)}</Text>
+      <Text style={styles.valueLabel}>{label}</Text>
+      <Text style={styles.valueText}>{formatCurrency(amount)}</Text>
     </View>
   );
 
@@ -432,124 +341,76 @@ export default function SummaryScreen({ navigation }) {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t("todays_summary")}</Text>
         <Text style={styles.lastResetText}>{lastResetDateDisplay}</Text>
-        {/* Only show reset button if a summary has been calculated (or loaded) */}
-        {hasCalculatedSummary && (
-          <TouchableOpacity
-            style={styles.headerResetButton}
-            onPress={handleResetSummary}
-            disabled={loading}
-          >
-            <Text style={styles.headerResetButtonText}>
-              {t("reset_summary_short")}
-            </Text>
-          </TouchableOpacity>
-        )}
       </View>
-      <ScrollView style={styles.scrollViewContent}>
+      <ScrollView
+        style={styles.scrollViewContent}
+        contentContainerStyle={styles.scrollViewContainer}
+      >
         <View style={styles.container}>
           {loading ? (
-            <ActivityIndicator size="large" color="#007bff" />
+            <ActivityIndicator size="large" color="#17a2b8" />
           ) : (
             <>
-              {/* Check if a summary exists at all or if all counts are zero to display "no data" */}
-              {!hasCalculatedSummary ||
-              (generalSummary.sellCount === 0 &&
-                generalSummary.restockCount === 0 &&
-                mobileMoneySummary.sellCount === 0 &&
-                mobileMoneySummary.restockCount === 0 &&
-                overallNetProfitOrLoss === 0) ? (
+              {!hasCalculatedSummary &&
+              generalSummary.totalSalesRevenue === 0 &&
+              generalSummary.totalCostOfRestocks === 0 &&
+              mobileMoneySummary.totalTransactionValue === 0 &&
+              mobileMoneySummary.totalCommissionEarned === 0 &&
+              overallNetProfitOrLoss === 0 ? (
                 <Text style={styles.noDataText}>{t("no_summary_data")}</Text>
               ) : (
                 <>
-                  {isMobileMoneyAgent ? ( // Conditional rendering based on agent status
+                  {isMobileMoneyAgent && (
                     <>
-                      {/* Mobile Money Summary Section */}
                       <Text style={styles.sectionTitle}>
-                        {t("mobile_money_summary")}
+                        {t("mobile_money_summary_title")}
                       </Text>
-                      <View style={styles.summaryRow}>
-                        {renderSummaryCard(
-                          t("withdrawals_count"),
-                          mobileMoneySummary.sellCount
-                        )}
-                        {renderSummaryCard(
-                          t("deposits_count"),
-                          mobileMoneySummary.restockCount
-                        )}
-                      </View>
-                      <View style={styles.summaryRow}>
-                        {renderSummaryCard(
-                          t("withdrawal_transactions"),
-                          mobileMoneySummary.numberOfWithdrawalTransactions
-                        )}
-                        {renderSummaryCard(
-                          t("deposit_transactions"),
-                          mobileMoneySummary.numberOfDepositTransactions
-                        )}
-                      </View>
-                      {renderTransactionValueCard(
+                      {renderValueCard(
                         t("total_mm_transaction_value"),
                         mobileMoneySummary.totalTransactionValue
                       )}
-                      {renderTransactionValueCard(
+                      {renderValueCard(
                         t("total_commission_earned"),
                         mobileMoneySummary.totalCommissionEarned
                       )}
-                      {renderNetProfitCard(
+                      {renderValueCard(
                         t("mobile_money_net_profit_loss"),
-                        mobileMoneySummary.netProfitOrLoss
+                        mobileMoneySummary.netProfitOrLoss,
+                        true
                       )}
-                    </>
-                  ) : (
-                    <>
-                      {/* General Shop Summary Section */}
-                      <Text style={styles.sectionTitle}>
-                        {t("general_shop_summary")}
-                      </Text>
-                      <View style={styles.summaryRow}>
-                        {renderSummaryCard(
-                          t("items_sold"),
-                          generalSummary.sellCount
-                        )}
-                        {renderSummaryCard(
-                          t("items_restocked"),
-                          generalSummary.restockCount
-                        )}
-                      </View>
-                      <View style={styles.summaryRow}>
-                        {renderSummaryCard(
-                          t("sales_transactions"),
-                          generalSummary.numberOfSalesTransactions
-                        )}
-                        {renderSummaryCard(
-                          t("restock_transactions"),
-                          generalSummary.numberOfRestockTransactions
-                        )}
-                      </View>
-                      {renderTransactionValueCard(
-                        t("total_sales_revenue"),
-                        generalSummary.totalSalesRevenue
-                      )}
-                      {renderTransactionValueCard(
-                        t("total_cost_of_restocks"),
-                        generalSummary.totalCostOfRestocks
-                      )}
-                      {renderNetProfitCard(
-                        t("general_net_profit_loss"),
-                        generalSummary.netProfitOrLoss
-                      )}
+                      <View style={styles.divider} />
                     </>
                   )}
 
-                  <View style={styles.divider} />
+                  {!isMobileMoneyAgent && (
+                    <>
+                      <Text style={styles.sectionTitle}>
+                        {t("general_shop_summary_title")}
+                      </Text>
+                      {renderValueCard(
+                        t("total_sales_revenue"),
+                        generalSummary.totalSalesRevenue
+                      )}
+                      {renderValueCard(
+                        t("total_cost_of_restocks"),
+                        generalSummary.totalCostOfRestocks
+                      )}
+                      {renderValueCard(
+                        t("general_net_profit_loss"),
+                        generalSummary.netProfitOrLoss,
+                        true
+                      )}
+                      <View style={styles.divider} />
+                    </>
+                  )}
 
-                  {/* Overall Business Summary (Always shown) */}
                   <Text style={styles.sectionTitle}>
-                    {t("overall_business_summary")}
+                    {t("overall_business_summary_title")}
                   </Text>
-                  {renderNetProfitCard(
+                  {renderValueCard(
                     t("overall_net_profit_loss"),
-                    overallNetProfitOrLoss
+                    overallNetProfitOrLoss,
+                    true
                   )}
                 </>
               )}
@@ -575,26 +436,27 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#eef2f5",
+    // Remove paddingTop here or set to 0
+    paddingTop: 0, // This removes the top padding from SafeAreaView
   },
   header: {
     backgroundColor: "#17a2b8",
-    height: 120,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
     flexDirection: "column",
     position: "relative",
-    paddingHorizontal: 20,
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 10 : 0,
   },
   headerTitle: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: "bold",
     color: "#fff",
     textAlign: "center",
@@ -602,160 +464,99 @@ const styles = StyleSheet.create({
   },
   lastResetText: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
+    color: "rgba(255,255,255,0.9)",
     marginBottom: 10,
-  },
-  headerResetButton: {
-    position: "absolute",
-    right: 15,
-    top: Platform.OS === "ios" ? 45 : StatusBar.currentHeight + 10,
-    backgroundColor: "#6c757d",
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    elevation: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 1.5,
-  },
-  headerResetButtonText: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
   },
   scrollViewContent: {
     flex: 1,
+  },
+  scrollViewContainer: {
+    paddingBottom: 40,
   },
   container: {
     padding: 20,
     alignItems: "center",
   },
   noDataText: {
-    fontSize: 16,
+    fontSize: 18,
     color: "#888",
     textAlign: "center",
-    marginTop: 50,
-    paddingHorizontal: 20,
+    marginTop: 80,
+    paddingHorizontal: 30,
+    lineHeight: 24,
   },
   sectionTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#333",
-    marginTop: 25,
-    marginBottom: 15,
+    marginTop: 30,
+    marginBottom: 20,
     textAlign: "center",
     width: "100%",
-    paddingBottom: 5,
-    borderBottomWidth: 1,
-    borderBottomColor: "#ddd",
+    paddingBottom: 8,
+    borderBottomWidth: 2,
+    borderBottomColor: "#cfe2ff",
   },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    width: "100%",
-    marginBottom: 10,
-  },
-  summaryCard: {
+  valueCard: {
     backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 15,
-    width: "45%",
-    alignItems: "center",
-    elevation: 5,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  summaryLabel: {
-    fontSize: 16,
-    color: "#555",
-    marginBottom: 8,
-    fontWeight: "600",
-  },
-  summaryValue: {
-    fontSize: 36,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  transactionValueCard: {
-    backgroundColor: "#e0f7fa",
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 15,
-    width: "90%",
-    alignItems: "center",
-    elevation: 3,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 5,
-  },
-  transactionValueLabel: {
-    fontSize: 16,
-    color: "#007bff",
-    marginBottom: 8,
-    fontWeight: "bold",
-  },
-  transactionValueText: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#0056b3",
-  },
-  netProfitCard: {
-    borderRadius: 15,
-    padding: 20,
-    marginTop: 10,
-    marginBottom: 20,
-    width: "90%",
+    borderRadius: 18,
+    padding: 22,
+    marginVertical: 10,
+    width: "95%",
     alignItems: "center",
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 10,
+    shadowRadius: 8,
+  },
+  valueLabel: {
+    fontSize: 17,
+    color: "#6c757d",
+    marginBottom: 10,
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  valueText: {
+    fontSize: 30,
+    fontWeight: "bold",
+    color: "#343a40",
   },
   netProfitPositive: {
     backgroundColor: "#d4edda",
+    borderColor: "#28a745",
+    borderWidth: 1,
   },
   netProfitNegative: {
     backgroundColor: "#f8d7da",
-  },
-  netProfitLabel: {
-    fontSize: 18,
-    marginBottom: 8,
-    fontWeight: "bold",
-    color: "#333",
-  },
-  netProfitValue: {
-    fontSize: 36,
-    fontWeight: "bold",
+    borderColor: "#dc3545",
+    borderWidth: 1,
   },
   divider: {
-    height: 1,
-    backgroundColor: "#ccc",
-    width: "80%",
-    marginVertical: 30,
+    height: 1.5,
+    backgroundColor: "#ced4da",
+    width: "90%",
+    marginVertical: 35,
+    borderRadius: 0.75,
   },
   closeBusinessButton: {
     backgroundColor: "#28a745",
-    paddingVertical: 15,
-    borderRadius: 10,
+    paddingVertical: 18,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 30,
-    marginBottom: 50,
-    width: "90%",
-    elevation: 4,
+    marginTop: 40,
+    marginBottom: 60,
+    width: "95%",
+    elevation: 5,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
   },
   closeBusinessButtonText: {
     color: "#fff",
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
   },
 });

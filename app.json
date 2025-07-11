@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "",
-    "slug": "Hand Shop",
+    "name": "Hand Shop",
+    "slug": "inventory-logger",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,6 +16,7 @@
       "supportsTablet": true
     },
     "android": {
+      "permissions": ["RECORD_AUDIO", "BLUETOOTH"],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -45,10 +46,7 @@
             ],
             "exclude": {
               "group": "com.android.support",
-              "module": [
-                "support-compat",
-                "versionedparcelable"
-              ],
+              "module": ["support-compat", "versionedparcelable"],
               "reason": "Force AndroidX migration and resolve duplicate classes"
             },
             "gradleCommandHooks": {
@@ -63,15 +61,13 @@
             }
           }
         }
-      ]
+      ],
+      "expo-sqlite",
+      "@react-native-voice/voice"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "82f0efef-8f1d-4d45-a098-efcac36b6b82"
-      }
-    }
+    "extra": {}
   }
 }
