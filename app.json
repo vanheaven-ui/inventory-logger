@@ -16,7 +16,11 @@
       "supportsTablet": true
     },
     "android": {
-      "permissions": ["RECORD_AUDIO", "BLUETOOTH"],
+      "permissions": [
+        "RECORD_AUDIO",
+        "BLUETOOTH",
+        "android.permission.RECORD_AUDIO"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
@@ -46,7 +50,10 @@
             ],
             "exclude": {
               "group": "com.android.support",
-              "module": ["support-compat", "versionedparcelable"],
+              "module": [
+                "support-compat",
+                "versionedparcelable"
+              ],
               "reason": "Force AndroidX migration and resolve duplicate classes"
             },
             "gradleCommandHooks": {
@@ -68,6 +75,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "873f1c0e-f663-4a11-be51-78df253c0870"
+      }
+    }
   }
 }
