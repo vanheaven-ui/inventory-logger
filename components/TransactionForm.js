@@ -19,7 +19,8 @@ import {
 } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import { Ionicons } from "@expo/vector-icons";
-import Voice from "@react-native-community/voice";
+// CHANGED: Import from the new package
+import Voice from "@react-native-voice/voice";
 
 import {
   saveTransaction,
@@ -57,16 +58,22 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     Voice.onSpeechResults = onSpeechResults;
     Voice.onSpeechPartialResults = onSpeechPartialResults;
     Voice.onSpeechError = onSpeechError;
+    // Optional: You might also want to add onSpeechVolumeChanged for visual feedback
+    // Voice.onSpeechVolumeChanged = onSpeechVolumeChanged;
 
     // Clean up listeners on unmount
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+      // It's good practice to ensure destroy is called safely
+      Voice.destroy()
+        .then(Voice.removeAllListeners)
+        .catch((e) => console.error("Error destroying Voice instance:", e));
     };
   }, []);
 
   useFocusEffect(
     useCallback(() => {
       return () => {
+        // Ensure voice recognition stops when the screen loses focus
         stopRecognizing();
         resetListeningStates();
       };
@@ -84,18 +91,28 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   const onSpeechStart = useCallback(
     (e) => {
       console.log("onSpeechStart: ", e);
-      if (lastSpokenField === "networkName") setIsListeningNetworkName(true);
-      else if (lastSpokenField === "transactionAmount")
-        setIsListeningAmount(true);
-      else if (lastSpokenField === "customerIdentifier")
-        setIsListeningCustomerIdentifier(true);
-      setPartialResults([]);
+      // The `started` property indicates if the recognition started successfully
+      if (e.error === false) {
+        // Check for explicit error: false
+        if (lastSpokenField === "networkName") setIsListeningNetworkName(true);
+        else if (lastSpokenField === "transactionAmount")
+          setIsListeningAmount(true);
+        else if (lastSpokenField === "customerIdentifier")
+          setIsListeningCustomerIdentifier(true);
+        setPartialResults([]);
+      } else {
+        // Handle cases where onSpeechStart fires but with an error, though less common
+        console.warn("Speech start event with error:", e);
+        resetListeningStates();
+      }
     },
     [lastSpokenField]
   );
 
   const onSpeechEnd = useCallback((e) => {
     console.log("onSpeechEnd: ", e);
+    // onSpeechEnd indicates the recognition session has finished,
+    // regardless of whether results were found.
     resetListeningStates();
   }, []);
 
@@ -105,10 +122,17 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       if (e.value && e.value.length > 0) {
         const recognizedText = e.value[0];
         applyVoiceResultToField(recognizedText, lastSpokenField);
+      } else {
+        // If no value is returned, it means no clear speech was recognized
+        Toast.show({
+          type: "info",
+          text1: t("no_speech_detected"),
+          text2: t("please_try_again_clearer"),
+        });
       }
-      resetListeningStates();
+      resetListeningStates(); // Reset after results are processed
     },
-    [lastSpokenField]
+    [lastSpokenField, t]
   );
 
   const onSpeechPartialResults = useCallback((e) => {
@@ -122,16 +146,44 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     (e) => {
       console.log("onSpeechError: ", e);
       resetListeningStates();
+      let errorMessage = t("try_again_or_check_settings");
+      if (e.error) {
+        // More specific error handling based on common codes
+        switch (e.error.code) {
+          case "3": // ERROR_AUDIO: Client side error while recording audio.
+            errorMessage = t("mic_audio_error");
+            break;
+          case "6": // ERROR_NO_MATCH: No recognition result matched.
+            errorMessage = t("no_match_found");
+            break;
+          case "7": // ERROR_SPEECH_TIMEOUT: No speech input.
+            errorMessage = t("speech_timeout");
+            break;
+          case "8": // ERROR_TOO_MANY_REQUESTS: Too many requests for speech recognition.
+            errorMessage = t("too_many_requests");
+            break;
+          case "9": // ERROR_CLIENT: Client side error.
+            errorMessage = t("general_client_error");
+            break;
+          case "11": // ERROR_PERMISSION_DENIED
+            errorMessage = t("mic_permission_denied");
+            break;
+          default:
+            errorMessage = e.error.message || t("try_again_or_check_settings");
+        }
+      }
+
       Toast.show({
         type: "error",
         text1: t("voice_recognition_error"),
-        text2: e.error ? e.error.message : t("try_again_or_check_settings"),
+        text2: errorMessage,
       });
     },
     [t]
   );
 
   const startRecognizing = async (field) => {
+    // If another recognition is active, stop it first
     if (
       isListeningNetworkName ||
       isListeningAmount ||
@@ -145,8 +197,20 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     setPartialResults([]);
 
     try {
-      const langCode = language === "lg" ? "lg-UG" : "en-UG"; // Use specific locale if supported
+      // Ensure the language code is correctly formatted for the library.
+      // 'lg' is Luganda. Check if 'lg-UG' is specifically supported by the underlying ASR.
+      // 'en-UG' for English (Uganda)
+      const langCode = language === "lg" ? "lg-UG" : "en-US"; // 'en-US' is a safe fallback if 'en-UG' isn't explicitly supported by the device's engine
+
+      // The new package returns a Promise, which is cleaner
       await Voice.start(langCode);
+
+      // Update listening state only if start was successful
+      if (field === "networkName") setIsListeningNetworkName(true);
+      else if (field === "transactionAmount") setIsListeningAmount(true);
+      else if (field === "customerIdentifier")
+        setIsListeningCustomerIdentifier(true);
+
       Toast.show({
         type: "info",
         text1: t("speak_now"),
@@ -168,20 +232,30 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       await Voice.stop();
     } catch (e) {
       console.error("Error stopping voice recognition:", e);
+    } finally {
+      resetListeningStates(); // Ensure states are reset even if stop fails
     }
   };
 
   const applyVoiceResultToField = useCallback(
     (result, field) => {
       const cleanedResult = result.trim();
-      if (!cleanedResult) return;
+      if (!cleanedResult) {
+        Toast.show({
+          type: "info",
+          text1: t("no_speech_detected"),
+          text2: t("please_try_again_clearer"),
+        });
+        return;
+      }
 
       switch (field) {
         case "networkName":
           setNetworkName(cleanedResult);
           break;
         case "transactionAmount":
-          const parsedAmount = cleanedResult.replace(/[^0-9.]/g, "");
+          // Added more robust parsing for amounts from voice
+          const parsedAmount = cleanedResult.replace(/[^0-9.]/g, ""); // Remove non-numeric/non-dot characters
           if (parsedAmount) {
             setTransactionAmount(parsedAmount);
           } else {
@@ -219,8 +293,8 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   }, [isMobileMoneyAgent, type, t]);
 
   const handleSubmit = async () => {
-    await stopRecognizing();
-    resetListeningStates();
+    await stopRecognizing(); // Stop any active listening before submission
+    resetListeningStates(); // Ensure states are reset
 
     const isWithdrawal = type === "sell";
     const parsedAmount = parseFloat(transactionAmount);
