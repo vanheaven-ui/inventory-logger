@@ -31,6 +31,7 @@
     },
     "plugins": [
       "./plugins/withAndroidManifestModifications.js",
+      "./plugins/withAndroidExcludes.js",
       [
         "expo-build-properties",
         {
@@ -51,7 +52,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "bd6fd6ce-757f-4f31-b78e-f103df959d1b"
+        "projectId": "e8136ccd-3514-4ce3-b614-7f6878c9e64d"
       }
     }
   }
