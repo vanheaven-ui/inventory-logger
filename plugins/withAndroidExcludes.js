@@ -6,112 +6,65 @@ function withAndroidCustomizations(config) {
     if (config.modResults.language === "groovy") {
       let buildGradleContent = config.modResults.contents;
 
-      // 1. Remove packagingOptions from defaultConfig to avoid incorrect placement
-      // This regex captures the defaultConfig block and then tries to remove any packagingOptions inside it.
-      // It's crucial this works, so we'll log if it attempts to remove.
-      const initialContent = buildGradleContent;
+      // Define ALL packagingOptions content to be injected/merged
+      // Keep this consistent. If new errors appear, add to this list.
+      const consolidatedPackagingOptionsContent = `
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        }
+        pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
+        pickFirst 'META-INF/androidx.customview_customview.version'
+        pickFirst 'META-INF/androidx.legacy_legacy-support-core-ui.version'
+        pickFirst 'META-INF/androidx.activity_activity.version' // Common new conflict after fixing legacy-support-core-ui
+        pickFirst 'META-INF/androidx.fragment_fragment.version' // Another common one
+        // Add more 'pickFirst' lines here as new META-INF conflicts appear.
+        // Example: pickFirst 'META-INF/another_conflicting_file.version'
+    }
+      `;
+
+      // 1. Remove ALL existing packagingOptions blocks, regardless of their location
+      // This regex tries to match any packagingOptions { ... } block
+      // The 's' flag allows '.' to match newlines. The '*' is non-greedy.
+      const packagingOptionsBlockRegex = /packagingOptions\s*\{[^}]*?\}/gs;
+      let initialContent = buildGradleContent;
       buildGradleContent = buildGradleContent.replace(
-        /(defaultConfig\s*\{[^}]*?)(\s*packagingOptions\s*\{[^}]*?\})([^}]*?\})/s,
-        (
-          match,
-          beforePackagingOptions,
-          packagingOptionsBlock,
-          afterPackagingOptions
-        ) => {
+        packagingOptionsBlockRegex,
+        (match) => {
           console.log(
-            "Expo Config Plugin: Removing packagingOptions from defaultConfig."
+            "Expo Config Plugin: Removing an existing packagingOptions block."
           );
-          return beforePackagingOptions + afterPackagingOptions; // Reconstruct without the inner packagingOptions
+          return ""; // Replace the matched block with an empty string
         }
       );
+
       if (initialContent !== buildGradleContent) {
         console.log(
-          "Expo Config Plugin: Successfully removed packagingOptions from defaultConfig."
+          "Expo Config Plugin: Successfully removed one or more packagingOptions blocks."
         );
       } else {
         console.log(
-          "Expo Config Plugin: No packagingOptions found in defaultConfig to remove (or regex did not match)."
+          "Expo Config Plugin: No packagingOptions blocks found to remove initially."
         );
       }
 
-      // Define ALL packagingOptions content to be injected/merged
-      const newPackagingOptionsContent = `
-            pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
-            pickFirst 'META-INF/androidx.customview_customview.version'
-            pickFirst 'META-INF/androidx.legacy_legacy-support-core-ui.version' // <--- ADD THIS NEW LINE!
-            // Add other resource conflicts here if they appear later
-            // pickFirst 'META-INF/some_other_conflicting_file.version'
-      `;
-
-      // 2. Find the top-level 'android {' block and either inject or merge packagingOptions
-      const androidBlockInsertionRegex = /(android\s*\{[^}]*?\})/s;
+      // 2. Find the top-level 'android {' block and insert the consolidated packagingOptions
+      const androidBlockInsertionRegex = /(android\s*\{[^}]*?\})/s; // Matches the entire android { ... } block
 
       if (buildGradleContent.match(androidBlockInsertionRegex)) {
         buildGradleContent = buildGradleContent.replace(
           androidBlockInsertionRegex,
           (androidBlockMatch) => {
-            const topLevelPackagingOptionsRegex =
-              /packagingOptions\s*\{[^}]*?\}/s;
-            if (androidBlockMatch.match(topLevelPackagingOptionsRegex)) {
-              // If it exists, find it and insert new rules inside it
-              console.log(
-                "Expo Config Plugin: Merging into existing top-level packagingOptions."
-              );
-              return androidBlockMatch.replace(
-                topLevelPackagingOptionsRegex,
-                (packagingOptionsMatch) => {
-                  // Ensure jniLibs is preserved if it was already there
-                  let existingJniLibs = "";
-                  const jniLibsMatch =
-                    packagingOptionsMatch.match(/jniLibs\s*\{[^}]*?\}/s);
-                  if (jniLibsMatch) {
-                    existingJniLibs = jniLibsMatch[0];
-                  }
-
-                  // Remove any old pickFirst rules to avoid duplication within the same block
-                  let cleanedPackagingOptionsMatch = packagingOptionsMatch
-                    .replace(
-                      /pickFirst\s*'META-INF\/androidx\.localbroadcastmanager_localbroadcastmanager\.version'/g,
-                      ""
-                    )
-                    .replace(
-                      /pickFirst\s*'META-INF\/androidx\.customview_customview\.version'/g,
-                      ""
-                    )
-                    .replace(
-                      /pickFirst\s*'META-INF\/androidx\.legacy_legacy-support-core-ui\.version'/g,
-                      ""
-                    );
-
-                  const lastBraceIndex =
-                    cleanedPackagingOptionsMatch.lastIndexOf("}");
-                  return (
-                    cleanedPackagingOptionsMatch.substring(0, lastBraceIndex) +
-                    newPackagingOptionsContent +
-                    cleanedPackagingOptionsMatch.substring(lastBraceIndex)
-                  );
-                }
-              );
-            } else {
-              // If it doesn't exist, create a new top-level packagingOptions block
-              // and insert it before the closing brace of the android block.
-              console.log(
-                "Expo Config Plugin: Creating new top-level packagingOptions."
-              );
-              const lastBraceIndex = androidBlockMatch.lastIndexOf("}");
-              return (
-                androidBlockMatch.substring(0, lastBraceIndex) +
-                `
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
-        }
-        ${newPackagingOptionsContent}
-    }
-                          ` +
-                androidBlockMatch.substring(lastBraceIndex)
-              );
-            }
+            console.log(
+              "Expo Config Plugin: Injecting consolidated packagingOptions into 'android' block."
+            );
+            // Insert the new block just before the closing brace of the android block
+            const lastBraceIndex = androidBlockMatch.lastIndexOf("}");
+            return (
+              androidBlockMatch.substring(0, lastBraceIndex) +
+              `\n${consolidatedPackagingOptionsContent}\n` + // Add newlines for formatting
+              androidBlockMatch.substring(lastBraceIndex)
+            );
           }
         );
       } else {
@@ -121,12 +74,13 @@ function withAndroidCustomizations(config) {
       }
 
       // 3. Ensure configurations.all { exclude ... } block is present (at the end of the file)
+      // This block is less prone to conflicts, so its simple append logic is usually fine.
       const excludeClassBlock = `
 configurations.all {
     exclude group: 'com.android.support', module: 'support-compat'
     exclude group: 'com.android.support', module: 'versionedparcelable'
-    // You might need to add more exclusions here for other legacy support libraries if they cause issues.
-    // exclude group: 'com.android.support', module: 'support-core-ui' // Consider this if you still get issues
+    // Potentially add more exclusions here if issues persist related to 'com.android.support'
+    // exclude group: 'com.android.support', module: 'support-core-ui' // Consider this if still getting core-ui issues
 }
 `;
       if (
