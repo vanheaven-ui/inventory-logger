@@ -6,76 +6,85 @@ function withAndroidCustomizations(config) {
     if (config.modResults.language === "groovy") {
       let buildGradleContent = config.modResults.contents;
 
-      // 1. Ensure the configurations.all { exclude ... } block is present (outside android {})
+      // 1. Remove packagingOptions from defaultConfig to avoid incorrect placement
+      // This regex captures the defaultConfig block and then tries to remove any packagingOptions inside it.
+      buildGradleContent = buildGradleContent.replace(
+        /(defaultConfig\s*\{[^}]*?)packagingOptions\s*\{[^}]*?\}([^}]*?\})/s,
+        (match, beforePackagingOptions, afterPackagingOptions) => {
+          console.log("Removing packagingOptions from defaultConfig.");
+          return beforePackagingOptions + afterPackagingOptions; // Reconstruct without the inner packagingOptions
+        }
+      );
+
+      // 2. Define the packagingOptions content to be injected/merged
+      const newPackagingOptionsContent = `
+            pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
+            pickFirst 'META-INF/androidx.customview_customview.version'
+            // Add other resource conflicts here if they appear later
+            // pickFirst 'META-INF/some_other_conflicting_file.version'
+      `;
+
+      // 3. Find the top-level 'android {' block and either inject or merge packagingOptions
+      const androidBlockInsertionRegex = /(android\s*\{[^}]*?\})/s;
+
+      if (buildGradleContent.match(androidBlockInsertionRegex)) {
+        buildGradleContent = buildGradleContent.replace(
+          androidBlockInsertionRegex,
+          (androidBlockMatch) => {
+            // Check if a packagingOptions block already exists at the top level
+            const topLevelPackagingOptionsRegex =
+              /packagingOptions\s*\{[^}]*?\}/s;
+            if (androidBlockMatch.match(topLevelPackagingOptionsRegex)) {
+              // If it exists, find it and insert new rules inside it
+              return androidBlockMatch.replace(
+                topLevelPackagingOptionsRegex,
+                (packagingOptionsMatch) => {
+                  const lastBraceIndex = packagingOptionsMatch.lastIndexOf("}");
+                  return (
+                    packagingOptionsMatch.substring(0, lastBraceIndex) +
+                    newPackagingOptionsContent +
+                    packagingOptionsMatch.substring(lastBraceIndex)
+                  );
+                }
+              );
+            } else {
+              // If it doesn't exist, create a new top-level packagingOptions block
+              // and insert it before the closing brace of the android block.
+              const lastBraceIndex = androidBlockMatch.lastIndexOf("}");
+              return (
+                androidBlockMatch.substring(0, lastBraceIndex) +
+                `
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        }
+        ${newPackagingOptionsContent}
+    }
+                          ` +
+                androidBlockMatch.substring(lastBraceIndex)
+              );
+            }
+          }
+        );
+      } else {
+        console.warn(
+          "Could not find 'android { }' block in build.gradle. Cannot inject packagingOptions."
+        );
+      }
+
+      // 4. Ensure configurations.all { exclude ... } block is present (at the end of the file)
       const excludeClassBlock = `
 configurations.all {
     exclude group: 'com.android.support', module: 'support-compat'
     exclude group: 'com.android.support', module: 'versionedparcelable'
 }
 `;
-      // Check if it already exists to avoid duplication
       if (
         !buildGradleContent.includes(
           "exclude group: 'com.android.support', module: 'support-compat'"
         )
       ) {
-        buildGradleContent += excludeClassBlock; // Append at the end of the file
-      }
-
-      // 2. Add/merge packagingOptions for resource duplicates into the *correct* location
-      // This regex looks for the top-level 'packagingOptions {' block within the 'android {' block
-      const packagingOptionsBlockRegex =
-        /(android\s*\{[^}]*?)(\bpackagingOptions\s*\{[^}]*?\})([^}]*?\})/s;
-
-      const newPickFirsts = `
-            pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
-            pickFirst 'META-INF/androidx.customview_customview.version'
-      `;
-
-      if (buildGradleContent.match(packagingOptionsBlockRegex)) {
-        // If a packagingOptions block already exists at the correct level, insert into it
-        buildGradleContent = buildGradleContent.replace(
-          packagingOptionsBlockRegex,
-          (match, p1, p2, p3) => {
-            // p1 is content before packagingOptions block, p2 is packagingOptions block, p3 is content after
-            const lastBraceOfPackagingOptions = p2.lastIndexOf("}");
-            return (
-              p1 +
-              p2.substring(0, lastBraceOfPackagingOptions) +
-              newPickFirsts + // Insert new rules
-              p2.substring(lastBraceOfPackagingOptions) +
-              p3
-            );
-          }
-        );
-      } else {
-        // Fallback: If no top-level packagingOptions block exists (unlikely in Expo projects),
-        // find the android {} block and inject a new one.
-        const androidBlockInsertionRegex = /(android\s*\{[^}]*?\})/s;
-        if (buildGradleContent.match(androidBlockInsertionRegex)) {
-          buildGradleContent = buildGradleContent.replace(
-            androidBlockInsertionRegex,
-            (match) => {
-              const lastBraceIndex = match.lastIndexOf("}");
-              return (
-                match.substring(0, lastBraceIndex) +
-                `
-              packagingOptions {
-                  jniLibs {
-                      useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
-                  }
-                  ${newPickFirsts}
-              }
-                          ` +
-                match.substring(lastBraceIndex)
-              );
-            }
-          );
-        } else {
-          console.warn(
-            "Could not find 'android { }' block in build.gradle. Cannot add packagingOptions."
-          );
-        }
+        buildGradleContent += excludeClassBlock;
       }
 
       config.modResults.contents = buildGradleContent;
