@@ -326,13 +326,13 @@ export async function saveTransaction(transactionData) {
           `Mobile Money Deposit: Float for ${floatToUpdate.itemName} decreased by ${newTransaction.quantity}. New float: ${floatToUpdate.currentStock}`
         );
 
-        // Update physical cash (as per latest instruction: deposit decrements cash)
-        currentPhysicalCash -= Number(newTransaction.quantity);
+        // Update physical cash (agent receives cash)
+        currentPhysicalCash += Number(newTransaction.quantity);
         if (commissionEarnedForTransaction) {
           currentPhysicalCash += Number(commissionEarnedForTransaction); // Add commission to cash
         }
         console.log(
-          `Physical Cash after MM Deposit (User's Rule): Paid out ${
+          `Physical Cash after MM Deposit: Received ${
             newTransaction.quantity
           }, earned commission ${
             commissionEarnedForTransaction || 0
@@ -350,6 +350,7 @@ export async function saveTransaction(transactionData) {
         commissionEarnedForTransaction = commission;
 
         // --- VALIDATION: Insufficient Physical Cash for Withdrawal ---
+        // Agent pays out cash, so physical cash decreases
         if (currentPhysicalCash < Number(newTransaction.quantity)) {
           throw new Error(
             `Insufficient physical cash for this withdrawal. Available: ${currentPhysicalCash}, Required: ${newTransaction.quantity}.`
@@ -357,11 +358,12 @@ export async function saveTransaction(transactionData) {
         }
         // --- NEW VALIDATION: Minimum Physical Cash Enforcement ---
         // Calculate projected cash *after* this withdrawal and commission
-        // Assuming withdrawal INCREMENTS cash and commission INCREMENTS cash (as per your last direct instruction)
+        // Assuming withdrawal DECREMENTS cash and commission INCREMENTS cash
         const projectedPhysicalCashAfterWithdrawal =
-          currentPhysicalCash +
+          currentPhysicalCash -
           Number(newTransaction.quantity) +
           Number(commissionEarnedForTransaction || 0);
+
         if (projectedPhysicalCashAfterWithdrawal < MIN_PHYSICAL_CASH_REQUIRED) {
           throw new Error(
             `Transaction would result in physical cash (${projectedPhysicalCashAfterWithdrawal} UGX) below the minimum required (${MIN_PHYSICAL_CASH_REQUIRED} UGX) to operate.`
@@ -375,13 +377,13 @@ export async function saveTransaction(transactionData) {
           `Mobile Money Withdrawal: Float for ${floatToUpdate.itemName} increased by ${newTransaction.quantity}. New float: ${floatToUpdate.currentStock}`
         );
 
-        // Update physical cash (as per latest instruction: withdrawal increments cash)
-        currentPhysicalCash += Number(newTransaction.quantity);
+        // Update physical cash (agent hands out cash)
+        currentPhysicalCash -= Number(newTransaction.quantity);
         if (commissionEarnedForTransaction) {
           currentPhysicalCash += Number(commissionEarnedForTransaction); // Add commission to cash
         }
         console.log(
-          `Physical Cash after MM Withdrawal (User's Rule): Received ${
+          `Physical Cash after MM Withdrawal: Paid out ${
             newTransaction.quantity
           }, earned commission ${
             commissionEarnedForTransaction || 0
