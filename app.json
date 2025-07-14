@@ -40,32 +40,7 @@
             "minSdkVersion": 24,
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "kotlinVersion": "2.0.21",
-            "enableJetifier": true,
-            "useAndroidX": true,
-            "extraMavenRepos": [
-              {
-                "url": "https://maven.google.com"
-              }
-            ],
-            "exclude": {
-              "group": "com.android.support",
-              "module": [
-                "support-compat",
-                "versionedparcelable"
-              ],
-              "reason": "Force AndroidX migration and resolve duplicate classes"
-            },
-            "gradleCommandHooks": {
-              "prePublish": [
-                "configurations.all {",
-                "    resolutionStrategy {",
-                "        force 'androidx.core:core:1.13.1'",
-                "        force 'androidx.versionedparcelable:versionedparcelable:1.1.1'",
-                "    }",
-                "}"
-              ]
-            }
+            "kotlinVersion": "2.0.21"
           }
         }
       ],
