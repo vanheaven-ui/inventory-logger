@@ -3,31 +3,30 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Toast from "react-native-toast-message";
 
-// Import your screens
+// Import screens
 import HomeScreen from "./screens/HomeScreen";
 import TransactionHistoryScreen from "./screens/TransactionHistoryScreen";
 import TransactionScreen from "./screens/TransactionScreen";
 import SummaryScreen from "./screens/SummaryScreen";
 import InventoryScreen from "./screens/InventoryScreen";
 import ManageItemScreen from "./screens/ManageItemScreen";
-import ManageFloatScreen from "./screens/ManageFloatScreen"; // <--- Import the new ManageFloatScreen
+import ManageFloatScreen from "./screens/ManageFloatScreen";
 
-// Import your LanguageContext
+// Import LanguageContext
 import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 
-// Define your color palette (replace with your actual Colors.js import if you have one)
+// Define the color palette
 const Colors = {
-  primary: "#007bff", // A vibrant blue for main actions
-  primaryDark: "#0056b3", // A darker shade for status bar (if needed)
+  primary: "#007bff", 
+  primaryDark: "#0056b3", 
   white: "#ffffff",
-  textDark: "#2c3e50", // Dark text
-  // ... add any other colors used in your headers
+  textDark: "#2c3e50", 
 };
 
 const Stack = createNativeStackNavigator();
 
-// Create a component that wraps your stack navigator
-// This allows you to use hooks like useLanguage within the navigator configuration
+// Create a component that wraps the stack navigator
+// This allows the use hooks like useLanguage within the navigator configuration
 function AppNavigatorContent() {
   const { t, language } = useLanguage(); // Get translation function and current language
 
@@ -36,7 +35,7 @@ function AppNavigatorContent() {
     (screenName) => {
       switch (screenName) {
         case "Transaction":
-          return t("record_transaction_title"); // Assuming you have this key in your translations
+          return t("record_transaction_title"); 
         case "Summary":
           return t("daily_summary_title");
         case "History":
@@ -45,8 +44,8 @@ function AppNavigatorContent() {
           return t("inventory_title"); // Or "manage_float_title" based on agent status if you want dynamic header here
         case "ManageItem":
           return t("manage_item_title"); // Or "add_item_title", "edit_item_title"
-        case "ManageFloat": // <--- New case for ManageFloatScreen
-          return t("manage_float"); // Use the translation key for "Manage Float"
+        case "ManageFloat": 
+          return t("manage_float");
         default:
           return t("app_name"); // Fallback for undefined
       }
@@ -59,7 +58,7 @@ function AppNavigatorContent() {
       initialRouteName="Home"
       screenOptions={{
         headerStyle: {
-          backgroundColor: Colors.primary, // Background color of the header
+          backgroundColor: Colors.primary, 
         },
         headerTintColor: Colors.white, // Color of the title and back button
         headerTitleStyle: {
@@ -68,8 +67,6 @@ function AppNavigatorContent() {
         },
         headerTitleAlign: "center", // Center the header title
         // For iOS, the header height is often handled automatically with safe areas.
-        // For Android, sometimes you might want to explicitly set height if default isn't right,
-        // but createNativeStackNavigator usually does a good job.
         // headerStatusBarHeight: Platform.OS === 'android' ? 0 : undefined, // Useful if status bar pushes header
       }}
     >
@@ -125,7 +122,6 @@ function AppNavigatorContent() {
           headerLeft: () => null, // Hide back button for modals (users expect a dismiss button)
         })}
       />
-      {/* New route for ManageFloatScreen */}
       <Stack.Screen
         name="ManageFloat"
         component={ManageFloatScreen}

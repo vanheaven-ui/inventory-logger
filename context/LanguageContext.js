@@ -264,7 +264,7 @@ const translations = {
   },
   lg: {
     // --- App Name ---
-    app_name: "Hand Shop",
+    app_name: "Duuka Mungaloyo",
     greeting_prefix: "Tukwanirizza mu ",
 
     // --- General ---
@@ -646,7 +646,7 @@ const translations = {
   },
   nyn: {
     // --- App Name ---
-    app_name: "Hand Shop",
+    app_name: "Eduuka Omungaro Yawe",
     greeting_prefix: "Mwahurire kuri ",
 
     // --- General ---

@@ -19,7 +19,7 @@ import {
   getFloatEntries, // For mobile money float
   deleteFloatEntry, // For mobile money float
   clearFloatEntries, // For mobile money float
-  getPhysicalCash, // <--- NEW: Import getPhysicalCash
+  getPhysicalCash, // For pyhsical cash
 } from "../storage/transactionStorage";
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -241,8 +241,7 @@ export default function InventoryScreen() {
       <View style={styles.itemDetails}>
         {/* Dynamic Item/Network Name */}
         <Text style={styles.itemName}>
-          {isMobileMoneyAgent ? t("network_name") : t("item_name")}:{" "}
-          {item.itemName}
+          {isMobileMoneyAgent ? t("network_name") : t("item_name")}: {item.itemName}
         </Text>
         {/* Dynamic Stock/Float */}
         <Text style={styles.itemStock}>

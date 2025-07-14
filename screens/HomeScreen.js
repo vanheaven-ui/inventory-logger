@@ -20,7 +20,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 // Key for AsyncStorage
 const IS_AGENT_KEY = "isMobileMoneyAgent";
 
-// Define your color palette ONCE at the top or import it from a separate file.
+// Define the color palette ONCE at the top or import it from a separate file.
 const Colors = {
   primary: "#007bff", // A vibrant blue for main actions
   primaryLite: "#66A7FF", // Lighter shade of primary for track color
@@ -96,8 +96,6 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Fixed App Name and Logo Section */}
-      {/* Adjusted padding for Android to account for status bar */}
       <View
         style={[
           styles.fixedHeaderContainer,
@@ -214,7 +212,7 @@ export default function HomeScreen() {
   );
 }
 
-// Stylesheet definition - now uses the single Colors declaration from above
+// Stylesheet definition
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -267,8 +265,8 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     backgroundColor: Colors.success,
-    width: 50, // Reduced width
-    height: 50, // Reduced height
+    width: 50,
+    height: 50, 
     borderRadius: 25, // Adjusted borderRadius for smaller size
     justifyContent: "center",
     alignItems: "center",

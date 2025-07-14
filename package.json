@@ -20,7 +20,6 @@
     "expo-dev-client": "~5.2.1",
     "expo-localization": "^16.1.6",
     "expo-speech": "~13.1.7",
-    "expo-sqlite": "~15.2.14",
     "expo-status-bar": "~2.2.3",
     "expo-system-ui": "^5.0.9",
     "react": "19.0.0",
