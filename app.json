@@ -13,7 +13,11 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to convert your voice input into text for transaction details.",
+        "NSMicrophoneUsageDescription": "This app needs access to your microphone to enable voice input for transaction details."
+      }
     },
     "android": {
       "permissions": [
