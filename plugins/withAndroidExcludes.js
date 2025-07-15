@@ -21,10 +21,11 @@ function withAndroidExcludes(config) {
             pickFirst 'META-INF/androidx.legacy_legacy-support-core-utils.version'
             pickFirst 'META-INF/androidx.coordinatorlayout_coordinatorlayout.version'
             pickFirst 'META-INF/androidx.drawerlayout_drawerlayout.version'
+            pickFirst 'META-INF/androidx.appcompat_appcompat.version' // <--- ADDED THIS NEW LINE!
+            // Add more 'pickFirst' lines here as new META-INF conflicts appear.
     `;
 
     // 1. Construct the complete, desired packagingOptions block.
-    // We will always try to insert this exact block.
     const newPackagingOptionsBlock = `
     packagingOptions {
         jniLibs {
@@ -32,10 +33,9 @@ function withAndroidExcludes(config) {
         }
         ${pickFirstRules}
     }
-    `; // No extra comments/markers here, to be cleaner
+    `;
 
     // 2. Remove any existing packagingOptions block within the 'android' block.
-    // This is the safest way to ensure no duplicates or malformed existing blocks.
     const androidBlockRegex = /(android\s*\{[\s\S]*?\})/s;
     let androidBlockMatch = buildGradleContent.match(androidBlockRegex);
 
@@ -43,7 +43,7 @@ function withAndroidExcludes(config) {
       let androidBlockContent = androidBlockMatch[1]; // Get the full matched 'android { ... }' block including braces
 
       // Remove any existing packagingOptions block from the content of the android block
-      const packagingOptionsInAndroidRegex = /packagingOptions\s*\{[\s\S]*?\}/g; // 'g' for global to catch multiple if any
+      const packagingOptionsInAndroidRegex = /packagingOptions\s*\{[\s\S]*?\}/g;
       let replacedCount = 0;
       androidBlockContent = androidBlockContent.replace(
         packagingOptionsInAndroidRegex,
@@ -69,7 +69,7 @@ function withAndroidExcludes(config) {
       const lastBraceIndex = androidBlockContent.lastIndexOf("}");
       androidBlockContent =
         androidBlockContent.substring(0, lastBraceIndex) +
-        `\n${newPackagingOptionsBlock}\n` + // Add newlines for formatting
+        `\n${newPackagingOptionsBlock}\n` +
         androidBlockContent.substring(lastBraceIndex);
 
       // Replace the old android block with the modified one in the full file content
@@ -87,7 +87,6 @@ function withAndroidExcludes(config) {
     }
 
     // 3. Ensure configurations.all { exclude ... } block is present and contains all necessary excludes.
-    // This is the complete desired state for the configurations.all block.
     const requiredExcludeRules = `
     exclude group: 'com.android.support', module: 'support-compat'
     exclude group: 'com.android.support', module: 'versionedparcelable'
@@ -97,6 +96,7 @@ function withAndroidExcludes(config) {
     exclude group: 'com.android.support', module: 'support-core-utils'
     exclude group: 'com.android.support', module: 'coordinatorlayout'
     exclude group: 'com.android.support', module: 'drawerlayout'
+    exclude group: 'com.android.support', module: 'appcompat-v7' // <--- ADDED THIS NEW LINE!
     `;
     const fullConfigurationsAllBlock = `
 configurations.all {
