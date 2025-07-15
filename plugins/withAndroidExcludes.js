@@ -143,4 +143,4 @@ configurations.all {
   });
 }
 
-module.exports = withAndroidExcludes;
+module.exports = withAndroidExcludes; 
