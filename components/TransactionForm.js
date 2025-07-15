@@ -6,19 +6,19 @@ import {
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
-  Platform, // <-- ADDED
+  Platform,
   ActivityIndicator,
   StatusBar,
   Alert,
-  PermissionsAndroid, // <-- ADDED
+  PermissionsAndroid,
 } from "react-native";
 import Voice from "@react-native-voice/voice";
-import { useTranslation } from "react-i18next";
+import { useLanguage } from "../context/LanguageContext"; // Assuming this path is correct
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useSelector } from "react-redux";
-import { selectTheme } from "../features/themeSlice";
+// REMOVED: import { useSelector } from "react-redux";
+// REMOVED: import { selectTheme } from "../features/themeSlice";
 
 // Helper function to request microphone permission
 const requestMicrophonePermission = async (t) => {
@@ -27,8 +27,8 @@ const requestMicrophonePermission = async (t) => {
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
         {
-          title: t("microphone_permission_title"), // e.g., "Microphone Permission"
-          message: t("microphone_permission_message"), // e.g., "This app needs access to your microphone to enable voice input."
+          title: t("microphone_permission_title"),
+          message: t("microphone_permission_message"),
           buttonNeutral: t("ask_me_later"),
           buttonNegative: t("cancel"),
           buttonPositive: t("ok"),
@@ -41,8 +41,8 @@ const requestMicrophonePermission = async (t) => {
         console.log("Microphone permission denied.");
         Toast.show({
           type: "error",
-          text1: t("mic_permission_denied"), // e.g., "Microphone Permission Denied"
-          text2: t("please_grant_mic_permission"), // e.g., "Please grant microphone permission in settings."
+          text1: t("mic_permission_denied"),
+          text2: t("please_grant_mic_permission"),
         });
         return false;
       }
@@ -50,15 +50,12 @@ const requestMicrophonePermission = async (t) => {
       console.warn("Error requesting microphone permission:", err);
       Toast.show({
         type: "error",
-        text1: t("mic_permission_error"), // New key: e.g., "Permission Error"
-        text2: err.message || t("failed_to_request_mic_permission"), // New key: e.g., "Failed to request microphone permission."
+        text1: t("mic_permission_error"),
+        text2: err.message || t("failed_to_request_mic_permission"),
       });
       return false;
     }
   }
-  // iOS handles permission prompts mostly automatically when Voice.start() is called
-  // as long as infoPlist entries are correct in app.json.
-  // We'll still return true for iOS here as the explicit Android runtime request is the focus.
   return true;
 };
 
@@ -70,18 +67,21 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   const [lastSpokenField, setLastSpokenField] = useState(null);
 
   const [isListeningAmount, setIsListeningAmount] = useState(false);
-  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] =
-    useState(false);
+  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] = useState(false);
   const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
-  const [isLoading, setIsLoading] = useState(false); // To show loading state for speech recognition
+  const [isLoading, setIsLoading] = useState(false);
 
-  const { t, i18n } = useTranslation();
-  const language = i18n.language; // 'en' or 'lg'
+  const { t, language } = useLanguage();
 
-  const theme = useSelector(selectTheme);
-  const { colors } = theme;
+  // HARDCODED COLORS - Since Redux theme is removed
+  const colors = {
+    background: "#f8f8f8", // Light background
+    text: "#333333",       // Dark text
+    textSecondary: "#666666", // Lighter text for partial results
+    border: "#cccccc",     // Border color for inputs
+    placeholder: "#999999", // Placeholder text color
+  };
 
-  // Refs for text inputs to focus them programmatically
   const amountInputRef = useRef(null);
   const customerIdentifierInputRef = useRef(null);
   const networkNameInputRef = useRef(null);
@@ -112,34 +112,31 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
   const onSpeechStart = useCallback((e) => {
     console.log("onSpeechStart: ", e);
-    setIsLoading(true); // Indicate that speech recognition is active
+    setIsLoading(true);
   }, []);
 
-  const onSpeechEnd = useCallback(
-    (e) => {
-      console.log("onSpeechEnd: ", e);
-      resetListeningStates(); // Reset all listening states when speech ends
-    },
-    [resetListeningStates]
-  );
+  const onSpeechEnd = useCallback((e) => {
+    console.log("onSpeechEnd: ", e);
+    resetListeningStates();
+  }, [resetListeningStates]);
 
   const onSpeechResults = useCallback(
     (e) => {
       console.log("onSpeechResults: ", e);
       if (e.value && e.value.length > 0) {
         const text = e.value[0];
-        const cleanedText = text.replace(/,|-|\s/g, ""); // Remove commas, dashes, spaces for amount/identifier
+        const cleanedText = text.replace(/,|-|\s/g, "");
 
         if (lastSpokenField === "amount") {
-          const numericAmount = cleanedText.match(/\d+/g)?.join("") || ""; // Extract only digits
+          const numericAmount = cleanedText.match(/\d+/g)?.join("") || "";
           setAmount(numericAmount);
         } else if (lastSpokenField === "customerIdentifier") {
           setCustomerIdentifier(cleanedText);
         } else if (lastSpokenField === "networkName") {
-          setNetworkName(text); // Keep original text for network name
+          setNetworkName(text);
         }
       }
-      resetListeningStates(); // Stop listening after results are processed
+      resetListeningStates();
     },
     [lastSpokenField, resetListeningStates]
   );
@@ -148,13 +145,12 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     (e) => {
       console.log("onSpeechError: ", e);
       if (e.error?.message === "not-authorized" || e.error?.code === "14") {
-        // "not-authorized" is common on iOS, "14" is a common permission denied code for Android
         Alert.alert(
-          t("permission_required_title"), // e.g., "Permission Required"
-          t("microphone_access_needed"), // e.g., "Microphone access is required for voice input. Please enable it in your device settings."
+          t("permission_required_title"),
+          t("microphone_access_needed"),
           [
             {
-              text: t("ok"), // e.g., "OK"
+              text: t("ok"),
               onPress: () => console.log("Permission error acknowledged"),
             },
           ]
@@ -162,11 +158,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       } else {
         Toast.show({
           type: "error",
-          text1: t("speech_recognition_error"), // e.g., "Speech Recognition Error"
-          text2: e.error?.message || t("an_unknown_error_occurred"), // e.g., "An unknown error occurred."
+          text1: t("speech_recognition_error"),
+          text2: e.error?.message || t("an_unknown_error_occurred"),
         });
       }
-      resetListeningStates(); // Always reset on error
+      resetListeningStates();
     },
     [resetListeningStates, t]
   );
@@ -195,7 +191,6 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   ]);
 
   const startRecognizing = async (field) => {
-    // If another recognition is active, stop it first
     if (
       isListeningNetworkName ||
       isListeningAmount ||
@@ -205,31 +200,25 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       resetListeningStates();
     }
 
-    // --- NEW: Request permission before starting recognition ---
     const hasPermission = await requestMicrophonePermission(t);
     if (!hasPermission) {
-      // Permission not granted, stop here.
       resetListeningStates();
       return;
     }
-    // --- END NEW ---
 
     setLastSpokenField(field);
     setPartialResults([]);
-    setIsLoading(true); // Set loading true while starting
+    setIsLoading(true);
 
     try {
       const langCode = language === "lg" ? "lg-UG" : "en-US";
 
-      // Defensive check: Ensure Voice module is not null/undefined before using it
-      if (!Voice || typeof Voice.start !== "function") {
-        console.error(
-          "Voice module not properly initialized. Cannot call Voice.start."
-        );
+      if (!Voice || typeof Voice.start !== 'function') {
+        console.error("Voice module not properly initialized. Cannot call Voice.start.");
         Toast.show({
           type: "error",
-          text1: t("voice_module_error"), // e.g., "Voice Module Error"
-          text2: t("initialization_failed"), // e.g., "Speech recognition module failed to initialize."
+          text1: t("voice_module_error"),
+          text2: t("initialization_failed"),
         });
         resetListeningStates();
         return;
@@ -237,27 +226,25 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
       await Voice.start(langCode);
 
-      // Set the specific listening state only after Voice.start() is successfully called
       if (field === "amount") setIsListeningAmount(true);
-      else if (field === "customerIdentifier")
-        setIsListeningCustomerIdentifier(true);
+      else if (field === "customerIdentifier") setIsListeningCustomerIdentifier(true);
       else if (field === "networkName") setIsListeningNetworkName(true);
 
-      focusInput(field); // Focus the input field after starting
+      focusInput(field);
     } catch (e) {
       console.error("Error starting voice recognition:", e);
       Toast.show({
         type: "error",
-        text1: t("voice_start_error"), // e.g., "Voice Start Error"
-        text2: e.message || t("check_mic_permissions_or_rebuild"), // e.g., "Check microphone permissions or rebuild app."
+        text1: t("voice_start_error"),
+        text2: e.message || t("check_mic_permissions_or_rebuild"),
       });
-      resetListeningStates(); // Ensure all states are reset on error
+      resetListeningStates();
     }
   };
 
   const stopRecognizing = async () => {
     try {
-      if (Voice && typeof Voice.stop === "function") {
+      if (Voice && typeof Voice.stop === 'function') {
         await Voice.stop();
       } else {
         console.warn("Voice.stop() not available or Voice module is null.");
@@ -266,11 +253,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       console.error("Error stopping voice recognition:", e);
       Toast.show({
         type: "error",
-        text1: t("voice_stop_error"), // e.g., "Voice Stop Error"
-        text2: e.message || t("failed_to_stop_recognition"), // e.g., "Failed to stop speech recognition."
+        text1: t("voice_stop_error"),
+        text2: e.message || t("failed_to_stop_recognition"),
       });
     } finally {
-      resetListeningStates(); // Always reset states
+      resetListeningStates();
     }
   };
 
@@ -282,30 +269,22 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     resetListeningStates();
     Toast.show({
       type: "info",
-      text1: t("inputs_cleared"), // e.g., "Inputs Cleared"
+      text1: t("inputs_cleared"),
     });
   };
 
   const handleSubmit = () => {
-    if (
-      !amount ||
-      !customerIdentifier ||
-      (isMobileMoneyAgent && !networkName)
-    ) {
+    if (!amount || !customerIdentifier || (isMobileMoneyAgent && !networkName)) {
       Toast.show({
         type: "error",
-        text1: t("all_fields_required"), // e.g., "All fields are required"
+        text1: t("all_fields_required"),
       });
       return;
     }
 
     Alert.alert(
-      t("transaction_details"), // e.g., "Transaction Details"
-      `${t("amount")}: ${amount}\n${t(
-        "customer_identifier"
-      )}: ${customerIdentifier}\n${
-        isMobileMoneyAgent ? `${t("network_name")}: ${networkName}` : ""
-      }`,
+      t("transaction_details"),
+      `${t("amount")}: ${amount}\n${t("customer_identifier")}: ${customerIdentifier}\n${isMobileMoneyAgent ? `${t("network_name")}: ${networkName}` : ""}`,
       [
         {
           text: t("cancel"),
@@ -314,12 +293,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
         {
           text: t("confirm"),
           onPress: () => {
-            // Process the transaction here
             Toast.show({
               type: "success",
-              text1: t("transaction_successful"), // e.g., "Transaction Successful!"
+              text1: t("transaction_successful"),
             });
-            clearInputs(); // Clear inputs after successful submission
+            clearInputs();
           },
         },
       ]
@@ -327,7 +305,7 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   };
 
   const getMicIconColor = (isListening) => {
-    return isListening ? "#FF0000" : colors.text; // Red when listening, otherwise theme text color
+    return isListening ? "#FF0000" : colors.text;
   };
 
   return (
@@ -335,7 +313,8 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       style={[styles.container, { backgroundColor: colors.background }]}
     >
-      <StatusBar barStyle={theme.dark ? "light-content" : "dark-content"} />
+      {/* StatusBar style adjusted for light background */}
+      <StatusBar barStyle={"dark-content"} />
 
       <Text style={[styles.title, { color: colors.text }]}>
         {t("transaction_form_title")}
@@ -349,23 +328,18 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
         <View style={styles.inputWithMic}>
           <TextInput
             ref={amountInputRef}
-            style={[
-              styles.input,
-              { borderColor: colors.border, color: colors.text },
-            ]}
+            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
             keyboardType="numeric"
             value={amount}
             onChangeText={(text) => {
-              setAmount(text.replace(/[^0-9]/g, "")); // Allow only numeric input
+              setAmount(text.replace(/[^0-9]/g, ''));
             }}
             placeholder={t("enter_amount")}
             placeholderTextColor={colors.placeholder}
             onFocus={() => {
               if (isListeningAmount) {
-                stopRecognizing(); // Stop if already listening for this field
+                stopRecognizing();
               }
-              // Prevent mic from starting if keyboard is opened manually
-              // We want mic to start only when mic icon is pressed
             }}
           />
           <TouchableOpacity
@@ -400,10 +374,7 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
         <View style={styles.inputWithMic}>
           <TextInput
             ref={customerIdentifierInputRef}
-            style={[
-              styles.input,
-              { borderColor: colors.border, color: colors.text },
-            ]}
+            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
             keyboardType="default"
             value={customerIdentifier}
             onChangeText={setCustomerIdentifier}
@@ -450,10 +421,7 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
           <View style={styles.inputWithMic}>
             <TextInput
               ref={networkNameInputRef}
-              style={[
-                styles.input,
-                { borderColor: colors.border, color: colors.text },
-              ]}
+              style={[styles.input, { borderColor: colors.border, color: colors.text }]}
               keyboardType="default"
               value={networkName}
               onChangeText={setNetworkName}
@@ -485,9 +453,7 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
             </TouchableOpacity>
           </View>
           {isListeningNetworkName && partialResults.length > 0 && (
-            <Text
-              style={[styles.partialResult, { color: colors.textSecondary }]}
-            >
+            <Text style={[styles.partialResult, { color: colors.textSecondary }]}>
               {t("listening")}: {partialResults[0]}
             </Text>
           )}
@@ -573,13 +539,13 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 10,
     borderRadius: 10,
-    overflow: "hidden", // Ensure gradient respects border radius
+    overflow: "hidden",
   },
   submitButton: {
     flex: 1,
     marginLeft: 10,
     borderRadius: 10,
-    overflow: "hidden", // Ensure gradient respects border radius
+    overflow: "hidden",
   },
   gradientButton: {
     paddingVertical: 15,

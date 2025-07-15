@@ -199,9 +199,38 @@ const translations = {
     try_again_or_check_settings: "Please try again or check device settings.",
     voice_start_error: "Error starting voice input",
     check_mic_permissions: "Check microphone permissions.",
-    invalid_amount_voice: "Invalid amount spoken", // New key
+    invalid_amount_voice: "Invalid amount spoken",
     please_speak_clearly:
-      "Please speak clearly, e.g., 'five thousand' or '5000'.", // New key
+      "Please speak clearly, e.g., 'five thousand' or '5000'.",
+    microphone_permission_title: "Microphone Permission",
+    microphone_permission_message:
+      "This app needs access to your microphone to enable voice input for transaction details.",
+    ask_me_later: "Ask Me Later",
+    ok: "OK",
+    mic_permission_denied: "Microphone Permission Denied",
+    please_grant_mic_permission:
+      "Please grant microphone permission in your device settings.",
+    mic_permission_error: "Permission Error",
+    failed_to_request_mic_permission:
+      "Failed to request microphone permission.",
+
+    // Voice Module Initialization / Start Errors
+    voice_module_error: "Voice Module Error",
+    initialization_failed:
+      "Speech recognition module failed to initialize. Please try again.",
+    voice_start_error: "Voice Input Error",
+    check_mic_permissions_or_rebuild:
+      "Check microphone permissions and ensure the app is rebuilt.",
+    voice_stop_error: "Voice Stop Error",
+    failed_to_stop_recognition: "Failed to stop speech recognition.",
+
+    // Generic Speech Recognition Errors from onSpeechError
+    permission_required_title: "Permission Required",
+    microphone_access_needed:
+      "Microphone access is required for voice input. Please enable it in your device settings.",
+    speech_recognition_error: "Speech Recognition Error",
+    an_unknown_error_occurred:
+      "An unknown error occurred during speech recognition.",
 
     // --- Reports Screen ---
     reports_title: "Reports",
@@ -435,6 +464,36 @@ const translations = {
     detailed_transactions: "Enkola Mu Bubu",
     print_report: "Kuba Lipooti",
     share_report: "Gaba Lipooti",
+
+    // Microphone Permission Request
+    microphone_permission_title: "Olukusa Olw'ekiyaya",
+    microphone_permission_message:
+      "Pulogulaamu eno yeetaaga olukusa olw'ekiyaya okukozesa olulimi lwo mu buwandisi bw'ebikwata ku nkozi.",
+    ask_me_later: "Mbuuza oluvannyuma",
+    ok: "Weena",
+    mic_permission_denied: "Olukusa olw'ekiyaya Lwagaanyizibwa",
+    please_grant_mic_permission:
+      "Mwagalwa, wa pulogulaamu eno olukusa olw'ekiyaya mu setting za esimu yo.",
+    mic_permission_error: "Ensobi y'olukusa",
+    failed_to_request_mic_permission: "Ekyayaya kigaanyi okusaba olukusa.",
+
+    // Voice Module Initialization / Start Errors
+    voice_module_error: "Ensobi y'ekitundu ky'eddoboozi",
+    initialization_failed:
+      "Ekitundu ky'okumanya eddoboozi kigaanyi okutandika. Gezaako nate.",
+    voice_start_error: "Ensobi mu kwandika eddoboozi",
+    check_mic_permissions_or_rebuild:
+      "Kebera olukusa olw'ekiyaya era kakasa nti pulogulaamu ekolebbwa obupya.",
+    voice_stop_error: "Ensobi mu kuyimiriza eddoboozi",
+    failed_to_stop_recognition: "Kigaanyi okuyimiriza okumanya eddoboozi.",
+
+    // Generic Speech Recognition Errors from onSpeechError
+    permission_required_title: "Olukusa Lwetaagibwa",
+    microphone_access_needed:
+      "Olukusa olw'ekiyaya lwetaagibwa okukozesa eddoboozi. Jjukira okuluteeka mu setting za esimu yo.",
+    speech_recognition_error: "Ensobi mu kumanya eddoboozi",
+    an_unknown_error_occurred:
+      "Ensobi etamanyiddwa eyabaddewo mu kumanya eddoboozi.",
 
     // --- History Screen ---
     transaction_history_title: "Ebyafaayo by'Enkola",
