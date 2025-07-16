@@ -482,9 +482,6 @@ export async function saveTransaction(transactionData) {
 
 // Function for overwritting transactions in storage
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { TRANSACTIONS_KEY } from './constants'; // Your key definition
-
 export async function overwriteTransactions(newTransactionList) {
   try {
     await AsyncStorage.setItem(
