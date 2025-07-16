@@ -285,7 +285,7 @@ export default function InventoryScreen() {
           style={styles.editButton}
           onPress={() =>
             navigation.navigate(
-              isMobileMoneyAgent ? "ManageFloat" : "ManageItemScreen",
+              isMobileMoneyAgent ? "ManageFloat" : "ManageItem",
               { itemToEdit: item }
             )
           }
@@ -312,7 +312,7 @@ export default function InventoryScreen() {
         <TouchableOpacity
           onPress={() =>
             navigation.navigate(
-              isMobileMoneyAgent ? "ManageFloat" : "ManageItemScreen"
+              isMobileMoneyAgent ? "ManageFloat" : "ManageItem"
             )
           }
           style={styles.addButton}

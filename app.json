@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": false,
+    "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -24,7 +24,8 @@
     "android": {
       "permissions": [
         "RECORD_AUDIO",
-        "BLUETOOTH"
+        "BLUETOOTH",
+        "android.permission.RECORD_AUDIO"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -63,7 +64,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "1e65e746-e956-47ae-a11a-0d4807c69d5b"
+        "projectId": "ef9a27d3-5381-4deb-a569-edc09d57c363"
       }
     }
   }

@@ -5,20 +5,23 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, // Keep KeyboardAvoidingView for keyboard behavior
   Platform,
   ActivityIndicator,
-  StatusBar,
   Alert,
   PermissionsAndroid,
+  SafeAreaView, 
 } from "react-native";
 import Voice from "@react-native-voice/voice";
-import { useLanguage } from "../context/LanguageContext"; // Assuming this path is correct
+import { useLanguage } from "../context/LanguageContext"; 
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-// REMOVED: import { useSelector } from "react-redux";
-// REMOVED: import { selectTheme } from "../features/themeSlice";
+
+import { saveTransaction, calculateCommission } from "../storage/transactionStorage";
+
+console.log(Voice);
+
 
 // Helper function to request microphone permission
 const requestMicrophonePermission = async (t) => {
@@ -59,32 +62,53 @@ const requestMicrophonePermission = async (t) => {
   return true;
 };
 
-export default function TransactionForm({ isMobileMoneyAgent }) {
-  const [amount, setAmount] = useState("");
-  const [customerIdentifier, setCustomerIdentifier] = useState("");
-  const [networkName, setNetworkName] = useState("");
+// TransactionForm now receives 'type' as a prop from TransactionScreen
+export default function TransactionForm({ type, isMobileMoneyAgent }) {
+  // REMOVED: Transaction Category State - no longer needed as isMobileMoneyAgent prop directly controls form
+  // const [transactionCategory, setTransactionCategory] = useState(
+  //   isMobileMoneyAgent ? "mobileMoney" : "shop"
+  // );
+
+  // Input States
+  const [amount, setAmount] = useState(""); // For MM: transaction value
+  const [customerPhoneNumber, setCustomerPhoneNumber] = useState(""); // For MM
+  const [itemName, setItemName] = useState(""); // For Shop
+  const [quantity, setQuantity] = useState(""); // For Shop
+  const [networkName, setNetworkName] = useState(""); // For MM
+
+  // Voice Recognition States
   const [partialResults, setPartialResults] = useState([]);
   const [lastSpokenField, setLastSpokenField] = useState(null);
-
   const [isListeningAmount, setIsListeningAmount] = useState(false);
-  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] =
+  const [isListeningCustomerPhoneNumber, setIsListeningCustomerPhoneNumber] =
     useState(false);
+  const [isListeningItemName, setIsListeningItemName] = useState(false);
+  const [isListeningQuantity, setIsListeningQuantity] = useState(false);
   const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   const { t, language } = useLanguage();
 
-  // HARDCODED COLORS - Since Redux theme is removed
+  // Hardcoded colors for a light theme
   const colors = {
-    background: "#f8f8f8", // Light background
-    text: "#333333", // Dark text
-    textSecondary: "#666666", // Lighter text for partial results
-    border: "#cccccc", // Border color for inputs
-    placeholder: "#999999", // Placeholder text color
+    background: "#f8f8f8",
+    text: "#333333",
+    textSecondary: "#666666",
+    border: "#cccccc",
+    placeholder: "#999999",
+    primaryButton: "#4CAF50",
+    secondaryButton: "#FFD700",
+    activeCategory: "#007bff",
+    inactiveCategory: "#e0e0e0",
+    activeCategoryText: "#FFFFFF",
+    inactiveCategoryText: "#333333",
   };
 
+  // Refs for focusing inputs
   const amountInputRef = useRef(null);
-  const customerIdentifierInputRef = useRef(null);
+  const customerPhoneNumberInputRef = useRef(null);
+  const itemNameInputRef = useRef(null);
+  const quantityInputRef = useRef(null);
   const networkNameInputRef = useRef(null);
 
   const focusInput = (field) => {
@@ -92,8 +116,14 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       case "amount":
         amountInputRef.current?.focus();
         break;
-      case "customerIdentifier":
-        customerIdentifierInputRef.current?.focus();
+      case "customerPhoneNumber":
+        customerPhoneNumberInputRef.current?.focus();
+        break;
+      case "itemName":
+        itemNameInputRef.current?.focus();
+        break;
+      case "quantity":
+        quantityInputRef.current?.focus();
         break;
       case "networkName":
         networkNameInputRef.current?.focus();
@@ -105,12 +135,15 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
   const resetListeningStates = useCallback(() => {
     setIsListeningAmount(false);
-    setIsListeningCustomerIdentifier(false);
+    setIsListeningCustomerPhoneNumber(false);
+    setIsListeningItemName(false);
+    setIsListeningQuantity(false);
     setIsListeningNetworkName(false);
     setIsLoading(false);
     setLastSpokenField(null);
   }, []);
 
+  // Voice Recognition Handlers
   const onSpeechStart = useCallback((e) => {
     console.log("onSpeechStart: ", e);
     setIsLoading(true);
@@ -129,15 +162,26 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       console.log("onSpeechResults: ", e);
       if (e.value && e.value.length > 0) {
         const text = e.value[0];
-        const cleanedText = text.replace(/,|-|\s/g, "");
+        const cleanedText = text.replace(/,|-|\s/g, ""); // Remove commas, dashes, spaces
 
-        if (lastSpokenField === "amount") {
-          const numericAmount = cleanedText.match(/\d+/g)?.join("") || "";
-          setAmount(numericAmount);
-        } else if (lastSpokenField === "customerIdentifier") {
-          setCustomerIdentifier(cleanedText);
-        } else if (lastSpokenField === "networkName") {
-          setNetworkName(text);
+        switch (lastSpokenField) {
+          case "amount":
+            setAmount(cleanedText.match(/\d+/g)?.join("") || ""); // Extract only numbers
+            break;
+          case "customerPhoneNumber":
+            setCustomerPhoneNumber(cleanedText.match(/\d+/g)?.join("") || ""); // Extract only numbers
+            break;
+          case "itemName":
+            setItemName(text);
+            break;
+          case "quantity":
+            setQuantity(cleanedText.match(/\d+/g)?.join("") || "");
+            break;
+          case "networkName":
+            setNetworkName(text);
+            break;
+          default:
+            break;
         }
       }
       resetListeningStates();
@@ -195,10 +239,13 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   ]);
 
   const startRecognizing = async (field) => {
+    // Stop any active listening before starting a new one
     if (
       isListeningNetworkName ||
       isListeningAmount ||
-      isListeningCustomerIdentifier
+      isListeningCustomerPhoneNumber ||
+      isListeningItemName ||
+      isListeningQuantity
     ) {
       await stopRecognizing();
       resetListeningStates();
@@ -232,10 +279,26 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
       await Voice.start(langCode);
 
-      if (field === "amount") setIsListeningAmount(true);
-      else if (field === "customerIdentifier")
-        setIsListeningCustomerIdentifier(true);
-      else if (field === "networkName") setIsListeningNetworkName(true);
+      // Set specific listening state based on field
+      switch (field) {
+        case "amount":
+          setIsListeningAmount(true);
+          break;
+        case "customerPhoneNumber":
+          setIsListeningCustomerPhoneNumber(true);
+          break;
+        case "itemName":
+          setIsListeningItemName(true);
+          break;
+        case "quantity":
+          setIsListeningQuantity(true);
+          break;
+        case "networkName":
+          setIsListeningNetworkName(true);
+          break;
+        default:
+          break;
+      }
 
       focusInput(field);
     } catch (e) {
@@ -268,9 +331,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     }
   };
 
-  const clearInputs = () => {
+  const clearInputs = useCallback(() => {
     setAmount("");
-    setCustomerIdentifier("");
+    setCustomerPhoneNumber("");
+    setItemName("");
+    setQuantity("");
     setNetworkName("");
     setPartialResults([]);
     resetListeningStates();
@@ -278,276 +343,523 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       type: "info",
       text1: t("inputs_cleared"),
     });
-  };
+  }, [resetListeningStates, t]);
 
-  const handleSubmit = () => {
-    if (
-      !amount ||
-      !customerIdentifier ||
-      (isMobileMoneyAgent && !networkName)
-    ) {
-      Toast.show({
-        type: "error",
-        text1: t("all_fields_required"),
-      });
-      return;
+  const handleSubmit = async () => {
+    let transactionData = {};
+    let displayMessage = "";
+
+    // Determine the actual transaction type based on 'isMobileMoneyAgent' and the 'type' prop from parent
+    let actualTransactionType;
+    if (!isMobileMoneyAgent) {
+      // Shop transaction
+      actualTransactionType = type; // 'sell' or 'restock' from prop
+    } else {
+      // Mobile Money transaction
+      actualTransactionType = type === "sell" ? "withdrawal" : "deposit"; // Map prop 'sell' to 'withdrawal', 'restock' to 'deposit'
     }
 
-    Alert.alert(
-      t("transaction_details"),
-      `${t("amount")}: ${amount}\n${t(
-        "customer_identifier"
-      )}: ${customerIdentifier}\n${
-        isMobileMoneyAgent ? `${t("network_name")}: ${networkName}` : ""
-      }`,
-      [
-        {
-          text: t("cancel"),
-          style: "cancel",
-        },
-        {
-          text: t("confirm"),
-          onPress: () => {
-            Toast.show({
-              type: "success",
-              text1: t("transaction_successful"),
-            });
+    // Basic Validation - adjusted to use actualTransactionType
+    if (!isMobileMoneyAgent) {
+      // Shop transaction
+      if (!itemName || !quantity) {
+        Toast.show({ type: "error", text1: t("all_fields_required") });
+        return;
+      }
+      if (isNaN(Number(quantity)) || Number(quantity) <= 0) {
+        Toast.show({ type: "error", text1: t("invalid_quantity") });
+        return;
+      }
+
+      if (actualTransactionType === "sell") {
+        transactionData = {
+          isMobileMoney: false,
+          type: "sell",
+          itemName: itemName.trim(),
+          quantity: Number(quantity),
+          amount: 0, // Placeholder, actual amount derived from DB selling price * quantity
+          customerIdentifier: null, // Not applicable for general sales
+          networkName: null, // Not applicable
+          commissionEarned: 0, // Not applicable
+        };
+        displayMessage = `${t("item_name")}: ${itemName}\n${t(
+          "quantity"
+        )}: ${quantity}\n${t("total_amount")}: ${t("calculated_from_db")}`;
+      } else if (actualTransactionType === "restock") {
+        transactionData = {
+          isMobileMoney: false,
+          type: "restock",
+          itemName: itemName.trim(),
+          quantity: Number(quantity),
+          costPrice: 0, // Placeholder, actual cost price derived from DB
+          amount: 0, // Placeholder, actual amount derived from DB cost price * quantity
+          customerIdentifier: null,
+          networkName: null,
+          commissionEarned: 0,
+        };
+        displayMessage = `${t("item_name")}: ${itemName}\n${t(
+          "quantity"
+        )}: ${quantity}\n${t("cost_price")}: ${t("calculated_from_db")}\n${t(
+          "total_amount"
+        )}: ${t("calculated_from_db")}`;
+      }
+    } else {
+      // Mobile Money transaction
+      if (!customerPhoneNumber || !amount || !networkName) {
+        Toast.show({ type: "error", text1: t("all_fields_required") });
+        return;
+      }
+      if (isNaN(Number(amount)) || Number(amount) <= 0) {
+        Toast.show({ type: "error", text1: t("invalid_amount") });
+        return;
+      }
+
+      let commission = 0;
+      if (actualTransactionType === "deposit") {
+        // Now using 'deposit'
+        commission = calculateCommission(
+          networkName,
+          Number(amount),
+          "deposit"
+        );
+        transactionData = {
+          isMobileMoney: true,
+          type: "restock", // For MM, deposit is agent 'restocking' float
+          itemName: networkName.trim(), // Network name is the 'item' for MM
+          quantity: Number(amount), // Amount is the quantity for MM
+          amount: Number(amount), // Total amount of transaction
+          customerIdentifier: customerPhoneNumber.trim(),
+          networkName: networkName.trim(),
+          commissionEarned: commission,
+        };
+        displayMessage = `${t("transaction_type")}: ${t("deposit")}\n${t(
+          "network_name"
+        )}: ${networkName}\n${t(
+          "customer_phone_number"
+        )}: ${customerPhoneNumber}\n${t("amount")}: ${amount}\n${t(
+          "commission"
+        )}: ${commission}`;
+      } else if (actualTransactionType === "withdrawal") {
+        // Now using 'withdrawal'
+        commission = calculateCommission(
+          networkName,
+          Number(amount),
+          "withdrawal"
+        );
+        transactionData = {
+          isMobileMoney: true,
+          type: "sell", // For MM, withdrawal is agent 'selling' float
+          itemName: networkName.trim(), // Network name is the 'item' for MM
+          quantity: Number(amount), // Amount is the quantity for MM
+          amount: Number(amount), // Total amount of transaction
+          customerIdentifier: customerPhoneNumber.trim(),
+          networkName: networkName.trim(),
+          commissionEarned: commission,
+        };
+        displayMessage = `${t("transaction_type")}: ${t("withdrawal")}\n${t(
+          "network_name"
+        )}: ${networkName}\n${t(
+          "customer_phone_number"
+        )}: ${customerPhoneNumber}\n${t("amount")}: ${amount}\n${t(
+          "commission"
+        )}: ${commission}`;
+      }
+    }
+
+    Alert.alert(t("confirm_transaction"), displayMessage, [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("confirm"),
+        onPress: async () => {
+          try {
+            await saveTransaction(transactionData);
+            Toast.show({ type: "success", text1: t("transaction_successful") });
             clearInputs();
-          },
+          } catch (error) {
+            console.error("Failed to save transaction:", error);
+            Toast.show({
+              type: "error",
+              text1: t("transaction_failed"),
+              text2: error.message || t("an_unknown_error_occurred"),
+            });
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const getMicIconColor = (isListening) => {
     return isListening ? "#FF0000" : colors.text;
   };
 
+  // Determine which mic icon should be active for the current field
+  const getActiveMicState = (field) => {
+    switch (field) {
+      case "amount":
+        return isListeningAmount;
+      case "customerPhoneNumber":
+        return isListeningCustomerPhoneNumber;
+      case "itemName":
+        return isListeningItemName;
+      case "quantity":
+        return isListeningQuantity;
+      case "networkName":
+        return isListeningNetworkName;
+      default:
+        return false;
+    }
+  };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      // Renamed from 'container' and removed padding here to allow background to extend fully
-      style={[
-        styles.fullScreenContainer,
-        { backgroundColor: colors.background },
-      ]}
-    >
-      {/* StatusBar style adjusted for light background */}
-      {/* Set translucent to true and backgroundColor to transparent to allow content behind */}
-      <StatusBar
-        barStyle={"dark-content"}
-        translucent={true}
-        backgroundColor="transparent"
-      />
-      {/* New container for content with padding, to push content below the status bar */}
-      <View style={styles.contentContainer}>
+    // Wrap KeyboardAvoidingView inside SafeAreaView
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={[
+          styles.fullScreenContainer,
+          { backgroundColor: colors.background },
+        ]}
+      >
+        <View style={styles.contentContainer}>
+          {/* REMOVED: Transaction Category Selector */}
 
-        {/* Amount Input */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: colors.text }]}>
-            {t("amount")}
-          </Text>
-          <View style={styles.inputWithMic}>
-            <TextInput
-              ref={amountInputRef}
-              style={[
-                styles.input,
-                { borderColor: colors.border, color: colors.text },
-              ]}
-              keyboardType="numeric"
-              value={amount}
-              onChangeText={(text) => {
-                setAmount(text.replace(/[^0-9]/g, ""));
-              }}
-              placeholder={t("enter_amount")}
-              placeholderTextColor={colors.placeholder}
-              onFocus={() => {
-                if (isListeningAmount) {
-                  stopRecognizing();
-                }
-              }}
-            />
-            <TouchableOpacity
-              style={styles.micButton}
-              onPress={() =>
-                isListeningAmount
-                  ? stopRecognizing()
-                  : startRecognizing("amount")
-              }
-            >
-              {isLoading && isListeningAmount ? (
-                <ActivityIndicator size="small" color="#FF0000" />
-              ) : (
-                <Ionicons
-                  name={isListeningAmount ? "mic" : "mic-outline"}
-                  size={24}
-                  color={getMicIconColor(isListeningAmount)}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-          {isListeningAmount && partialResults.length > 0 && (
-            <Text
-              style={[styles.partialResult, { color: colors.textSecondary }]}
-            >
-              {t("listening")}: {partialResults[0]}
-            </Text>
-          )}
-        </View>
-
-        {/* Customer Identifier Input */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: colors.text }]}>
-            {t("customer_identifier")}
-          </Text>
-          <View style={styles.inputWithMic}>
-            <TextInput
-              ref={customerIdentifierInputRef}
-              style={[
-                styles.input,
-                { borderColor: colors.border, color: colors.text },
-              ]}
-              keyboardType="default"
-              value={customerIdentifier}
-              onChangeText={setCustomerIdentifier}
-              placeholder={t("enter_customer_identifier")}
-              placeholderTextColor={colors.placeholder}
-              onFocus={() => {
-                if (isListeningCustomerIdentifier) {
-                  stopRecognizing();
-                }
-              }}
-            />
-            <TouchableOpacity
-              style={styles.micButton}
-              onPress={() =>
-                isListeningCustomerIdentifier
-                  ? stopRecognizing()
-                  : startRecognizing("customerIdentifier")
-              }
-            >
-              {isLoading && isListeningCustomerIdentifier ? (
-                <ActivityIndicator size="small" color="#FF0000" />
-              ) : (
-                <Ionicons
-                  name={isListeningCustomerIdentifier ? "mic" : "mic-outline"}
-                  size={24}
-                  color={getMicIconColor(isListeningCustomerIdentifier)}
-                />
-              )}
-            </TouchableOpacity>
-          </View>
-          {isListeningCustomerIdentifier && partialResults.length > 0 && (
-            <Text
-              style={[styles.partialResult, { color: colors.textSecondary }]}
-            >
-              {t("listening")}: {partialResults[0]}
-            </Text>
-          )}
-        </View>
-
-        {/* Network Name Input (Conditional for Mobile Money Agent) */}
-        {isMobileMoneyAgent && (
-          <View style={styles.inputContainer}>
-            <Text style={[styles.label, { color: colors.text }]}>
-              {t("network_name")}
-            </Text>
-            <View style={styles.inputWithMic}>
-              <TextInput
-                ref={networkNameInputRef}
-                style={[
-                  styles.input,
-                  { borderColor: colors.border, color: colors.text },
-                ]}
-                keyboardType="default"
-                value={networkName}
-                onChangeText={setNetworkName}
-                placeholder={t("enter_network_name")}
-                placeholderTextColor={colors.placeholder}
-                onFocus={() => {
-                  if (isListeningNetworkName) {
-                    stopRecognizing();
-                  }
-                }}
-              />
-              <TouchableOpacity
-                style={styles.micButton}
-                onPress={() =>
-                  isListeningNetworkName
-                    ? stopRecognizing()
-                    : startRecognizing("networkName")
-                }
-              >
-                {isLoading && isListeningNetworkName ? (
-                  <ActivityIndicator size="small" color="#FF0000" />
-                ) : (
-                  <Ionicons
-                    name={isListeningNetworkName ? "mic" : "mic-outline"}
-                    size={24}
-                    color={getMicIconColor(isListeningNetworkName)}
+          {/* Dynamic Input Fields based on isMobileMoneyAgent prop and Type */}
+          {!isMobileMoneyAgent ? ( // Shop transaction fields
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  {t("item_name")}
+                </Text>
+                <View style={styles.inputWithMic}>
+                  <TextInput
+                    ref={itemNameInputRef}
+                    style={[
+                      styles.input,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    keyboardType="default"
+                    value={itemName}
+                    onChangeText={setItemName}
+                    placeholder={t("enter_item_name")}
+                    placeholderTextColor={colors.placeholder}
+                    onFocus={() =>
+                      getActiveMicState("itemName") && stopRecognizing()
+                    }
                   />
+                  <TouchableOpacity
+                    style={styles.micButton}
+                    onPress={() => startRecognizing("itemName")}
+                  >
+                    {isLoading && isListeningItemName ? (
+                      <ActivityIndicator size="small" color="#FF0000" />
+                    ) : (
+                      <Ionicons
+                        name={
+                          getActiveMicState("itemName") ? "mic" : "mic-outline"
+                        }
+                        size={24}
+                        color={getMicIconColor(getActiveMicState("itemName"))}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {isListeningItemName && partialResults.length > 0 && (
+                  <Text
+                    style={[
+                      styles.partialResult,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {t("listening")}: {partialResults[0]}
+                  </Text>
                 )}
-              </TouchableOpacity>
-            </View>
-            {isListeningNetworkName && partialResults.length > 0 && (
-              <Text
-                style={[styles.partialResult, { color: colors.textSecondary }]}
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  {t("quantity")}
+                </Text>
+                <View style={styles.inputWithMic}>
+                  <TextInput
+                    ref={quantityInputRef}
+                    style={[
+                      styles.input,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    keyboardType="numeric"
+                    value={quantity}
+                    onChangeText={(text) =>
+                      setQuantity(text.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder={t("enter_quantity")}
+                    placeholderTextColor={colors.placeholder}
+                    onFocus={() =>
+                      getActiveMicState("quantity") && stopRecognizing()
+                    }
+                  />
+                  <TouchableOpacity
+                    style={styles.micButton}
+                    onPress={() => startRecognizing("quantity")}
+                  >
+                    {isLoading && isListeningQuantity ? (
+                      <ActivityIndicator size="small" color="#FF0000" />
+                    ) : (
+                      <Ionicons
+                        name={
+                          getActiveMicState("quantity") ? "mic" : "mic-outline"
+                        }
+                        size={24}
+                        color={getMicIconColor(getActiveMicState("quantity"))}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {isListeningQuantity && partialResults.length > 0 && (
+                  <Text
+                    style={[
+                      styles.partialResult,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {t("listening")}: {partialResults[0]}
+                  </Text>
+                )}
+              </View>
+            </>
+          ) : (
+            // Mobile Money transaction fields
+            <>
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  {t("customer_phone_number")}
+                </Text>
+                <View style={styles.inputWithMic}>
+                  <TextInput
+                    ref={customerPhoneNumberInputRef}
+                    style={[
+                      styles.input,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    keyboardType="phone-pad"
+                    value={customerPhoneNumber}
+                    onChangeText={(text) =>
+                      setCustomerPhoneNumber(text.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder={t("enter_customer_phone_number")}
+                    placeholderTextColor={colors.placeholder}
+                    onFocus={() =>
+                      getActiveMicState("customerPhoneNumber") &&
+                      stopRecognizing()
+                    }
+                  />
+                  <TouchableOpacity
+                    style={styles.micButton}
+                    onPress={() => startRecognizing("customerPhoneNumber")}
+                  >
+                    {isLoading && isListeningCustomerPhoneNumber ? (
+                      <ActivityIndicator size="small" color="#FF0000" />
+                    ) : (
+                      <Ionicons
+                        name={
+                          getActiveMicState("customerPhoneNumber")
+                            ? "mic"
+                            : "mic-outline"
+                        }
+                        size={24}
+                        color={getMicIconColor(
+                          getActiveMicState("customerPhoneNumber")
+                        )}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {isListeningCustomerPhoneNumber &&
+                  partialResults.length > 0 && (
+                    <Text
+                      style={[
+                        styles.partialResult,
+                        { color: colors.textSecondary },
+                      ]}
+                    >
+                      {t("listening")}: {partialResults[0]}
+                    </Text>
+                  )}
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  {t("network_name")}
+                </Text>
+                <View style={styles.inputWithMic}>
+                  <TextInput
+                    ref={networkNameInputRef}
+                    style={[
+                      styles.input,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    keyboardType="default"
+                    value={networkName}
+                    onChangeText={setNetworkName}
+                    placeholder={t("enter_network_name")}
+                    placeholderTextColor={colors.placeholder}
+                    onFocus={() =>
+                      getActiveMicState("networkName") && stopRecognizing()
+                    }
+                  />
+                  <TouchableOpacity
+                    style={styles.micButton}
+                    onPress={() => startRecognizing("networkName")}
+                  >
+                    {isLoading && isListeningNetworkName ? (
+                      <ActivityIndicator size="small" color="#FF0000" />
+                    ) : (
+                      <Ionicons
+                        name={
+                          getActiveMicState("networkName")
+                            ? "mic"
+                            : "mic-outline"
+                        }
+                        size={24}
+                        color={getMicIconColor(
+                          getActiveMicState("networkName")
+                        )}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {isListeningNetworkName && partialResults.length > 0 && (
+                  <Text
+                    style={[
+                      styles.partialResult,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {t("listening")}: {partialResults[0]}
+                  </Text>
+                )}
+              </View>
+
+              <View style={styles.inputContainer}>
+                <Text style={[styles.label, { color: colors.text }]}>
+                  {t("amount")}
+                </Text>
+                <View style={styles.inputWithMic}>
+                  <TextInput
+                    ref={amountInputRef}
+                    style={[
+                      styles.input,
+                      { borderColor: colors.border, color: colors.text },
+                    ]}
+                    keyboardType="numeric"
+                    value={amount}
+                    onChangeText={(text) =>
+                      setAmount(text.replace(/[^0-9]/g, ""))
+                    }
+                    placeholder={t("enter_amount")}
+                    placeholderTextColor={colors.placeholder}
+                    onFocus={() =>
+                      getActiveMicState("amount") && stopRecognizing()
+                    }
+                  />
+                  <TouchableOpacity
+                    style={styles.micButton}
+                    onPress={() => startRecognizing("amount")}
+                  >
+                    {isLoading && isListeningAmount ? (
+                      <ActivityIndicator size="small" color="#FF0000" />
+                    ) : (
+                      <Ionicons
+                        name={
+                          getActiveMicState("amount") ? "mic" : "mic-outline"
+                        }
+                        size={24}
+                        color={getMicIconColor(isListeningAmount)}
+                      />
+                    )}
+                  </TouchableOpacity>
+                </View>
+                {isListeningAmount && partialResults.length > 0 && (
+                  <Text
+                    style={[
+                      styles.partialResult,
+                      { color: colors.textSecondary },
+                    ]}
+                  >
+                    {t("listening")}: {partialResults[0]}
+                  </Text>
+                )}
+              </View>
+            </>
+          )}
+
+          {/* Buttons */}
+          <View style={styles.buttonContainer}>
+            <TouchableOpacity style={styles.clearButton} onPress={clearInputs}>
+              <LinearGradient
+                colors={["#FFD700", "#FFA500"]}
+                style={styles.gradientButton}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
               >
-                {t("listening")}: {partialResults[0]}
-              </Text>
-            )}
+                <Text style={styles.buttonText}>{t("clear")}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={handleSubmit}
+            >
+              <LinearGradient
+                colors={["#4CAF50", "#2E8B57"]}
+                style={styles.gradientButton}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Text style={styles.buttonText}>{t("submit")}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
-        )}
-
-        {/* Buttons */}
-        <View style={styles.buttonContainer}>
-          <TouchableOpacity style={styles.clearButton} onPress={clearInputs}>
-            <LinearGradient
-              colors={["#FFD700", "#FFA500"]}
-              style={styles.gradientButton}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.buttonText}>{t("clear")}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-            <LinearGradient
-              colors={["#4CAF50", "#2E8B57"]}
-              style={styles.gradientButton}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              <Text style={styles.buttonText}>{t("submit")}</Text>
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
-      </View>{" "}
-      {/* End of contentContainer */}
-      <Toast />
-    </KeyboardAvoidingView>
+        <Toast />
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  fullScreenContainer: {
-    // Renamed from 'container'
+  safeArea: {
     flex: 1,
-    // Removed padding here to allow background to extend
+    backgroundColor: "#f6f6f6", // Match your InventoryScreen's SafeAreaView background
+  },
+  fullScreenContainer: {
+    flex: 1,
   },
   contentContainer: {
-    // New container for content with padding
     flex: 1,
-    padding: 20, // Apply padding here for content
-    // Add status bar height for Android to push content down, iOS is handled by KeyboardAvoidingView behavior="padding"
-    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 20 : 20,
+    padding: 20,
+    paddingTop: 20, // Now fixed padding, SafeAreaView handles the top inset
   },
-  title: {
-    fontSize: 28,
+  // Removed title style as the Text component is removed
+  categorySelector: {
+    // REMOVED: This style is no longer used by any component
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginBottom: 20,
+    backgroundColor: "#e0e0e0",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
+  categoryButton: {
+    // REMOVED: This style is no longer used by any component
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  categoryButtonText: {
+    // REMOVED: This style is no longer used by any component
+    fontSize: 16,
     fontWeight: "bold",
-    marginBottom: 30,
-    textAlign: "center",
+    color: "#333333",
   },
   inputContainer: {
     marginBottom: 20,
