@@ -25,8 +25,6 @@ const Colors = {
 
 const Stack = createNativeStackNavigator();
 
-// Create a component that wraps the stack navigator
-// This allows the use hooks like useLanguage within the navigator configuration
 function AppNavigatorContent() {
   const { t, language } = useLanguage(); // Get translation function and current language
 
@@ -51,7 +49,7 @@ function AppNavigatorContent() {
       }
     },
     [t, language]
-  ); // Re-create if 't' or 'language' changes
+  ); 
 
   return (
     <Stack.Navigator
@@ -60,21 +58,19 @@ function AppNavigatorContent() {
         headerStyle: {
           backgroundColor: Colors.primary, 
         },
-        headerTintColor: Colors.white, // Color of the title and back button
+        headerTintColor: Colors.white, 
         headerTitleStyle: {
           fontWeight: "bold",
           fontSize: 20,
         },
-        headerTitleAlign: "center", // Center the header title
-        // For iOS, the header height is often handled automatically with safe areas.
-        // headerStatusBarHeight: Platform.OS === 'android' ? 0 : undefined, // Useful if status bar pushes header
+        headerTitleAlign: "center",
       }}
     >
       <Stack.Screen
         name="Home"
         component={HomeScreen}
         options={{
-          headerShown: false, // Hide header for the Home screen, as it has a custom one
+          headerShown: false, 
         }}
       />
       <Stack.Screen
@@ -82,8 +78,6 @@ function AppNavigatorContent() {
         component={TransactionScreen}
         options={({ route }) => ({
           headerTitle: getHeaderTitle("Transaction"),
-          // You might want to dynamically change the title here based on transaction type
-          // e.g., if route.params?.type === 'sell' then t('record_sale'), else t('record_restock')
         })}
       />
       <Stack.Screen
@@ -139,7 +133,6 @@ export default function App() {
   return (
     <LanguageProvider>
       <NavigationContainer>
-        {/* Render the AppNavigatorContent component inside NavigationContainer */}
         <AppNavigatorContent />
       </NavigationContainer>
       <Toast />

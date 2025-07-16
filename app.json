@@ -47,7 +47,21 @@
             "minSdkVersion": 24,
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "kotlinVersion": "2.0.21"
+            "kotlinVersion": "2.0.21",
+            "extraMainActivityFeatures": [
+              {
+                "target": "queries",
+                "resource": {
+                  "target": "intent",
+                  "resource": {
+                    "target": "action",
+                    "resource": {
+                      "name": "android.speech.RecognitionService"
+                    }
+                  }
+                }
+              }
+            ]
           }
         }
       ],
@@ -62,10 +76,6 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {
-      "eas": {
-        "projectId": "ef9a27d3-5381-4deb-a569-edc09d57c363"
-      }
-    }
+    "extra": {}
   }
 }
