@@ -24,8 +24,7 @@
     "android": {
       "permissions": [
         "RECORD_AUDIO",
-        "BLUETOOTH",
-        "android.permission.RECORD_AUDIO"
+        "BLUETOOTH"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -51,7 +50,13 @@
           }
         }
       ],
-      "@react-native-voice/voice"
+      [
+        "@react-native-voice/voice",
+        {
+          "microphonePermission": "Allow Hand Shop to use the microphone for voice input.",
+          "speechRecognitionPermission": "Allow Hand Shop to securely recognize user speech."
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"
