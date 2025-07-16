@@ -480,6 +480,25 @@ export async function saveTransaction(transactionData) {
   }
 }
 
+// Function for overwritting transactions in storage
+
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { TRANSACTIONS_KEY } from './constants'; // Your key definition
+
+export async function overwriteTransactions(newTransactionList) {
+  try {
+    await AsyncStorage.setItem(
+      TRANSACTIONS_KEY,
+      JSON.stringify(newTransactionList)
+    );
+    console.log("Transactions successfully overwritten.");
+  } catch (error) {
+    console.error("Failed to overwrite transactions:", error);
+    throw error;
+  }
+}
+
+
 export const clearTransactions = async () => {
   return await saveData(TRANSACTIONS_KEY, []);
 };
