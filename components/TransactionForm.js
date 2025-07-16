@@ -67,7 +67,8 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   const [lastSpokenField, setLastSpokenField] = useState(null);
 
   const [isListeningAmount, setIsListeningAmount] = useState(false);
-  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] = useState(false);
+  const [isListeningCustomerIdentifier, setIsListeningCustomerIdentifier] =
+    useState(false);
   const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -76,9 +77,9 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   // HARDCODED COLORS - Since Redux theme is removed
   const colors = {
     background: "#f8f8f8", // Light background
-    text: "#333333",       // Dark text
+    text: "#333333", // Dark text
     textSecondary: "#666666", // Lighter text for partial results
-    border: "#cccccc",     // Border color for inputs
+    border: "#cccccc", // Border color for inputs
     placeholder: "#999999", // Placeholder text color
   };
 
@@ -115,10 +116,13 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     setIsLoading(true);
   }, []);
 
-  const onSpeechEnd = useCallback((e) => {
-    console.log("onSpeechEnd: ", e);
-    resetListeningStates();
-  }, [resetListeningStates]);
+  const onSpeechEnd = useCallback(
+    (e) => {
+      console.log("onSpeechEnd: ", e);
+      resetListeningStates();
+    },
+    [resetListeningStates]
+  );
 
   const onSpeechResults = useCallback(
     (e) => {
@@ -213,8 +217,10 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
     try {
       const langCode = language === "lg" ? "lg-UG" : "en-US";
 
-      if (!Voice || typeof Voice.start !== 'function') {
-        console.error("Voice module not properly initialized. Cannot call Voice.start.");
+      if (!Voice || typeof Voice.start !== "function") {
+        console.error(
+          "Voice module not properly initialized. Cannot call Voice.start."
+        );
         Toast.show({
           type: "error",
           text1: t("voice_module_error"),
@@ -227,7 +233,8 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
       await Voice.start(langCode);
 
       if (field === "amount") setIsListeningAmount(true);
-      else if (field === "customerIdentifier") setIsListeningCustomerIdentifier(true);
+      else if (field === "customerIdentifier")
+        setIsListeningCustomerIdentifier(true);
       else if (field === "networkName") setIsListeningNetworkName(true);
 
       focusInput(field);
@@ -244,7 +251,7 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
   const stopRecognizing = async () => {
     try {
-      if (Voice && typeof Voice.stop === 'function') {
+      if (Voice && typeof Voice.stop === "function") {
         await Voice.stop();
       } else {
         console.warn("Voice.stop() not available or Voice module is null.");
@@ -274,7 +281,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   };
 
   const handleSubmit = () => {
-    if (!amount || !customerIdentifier || (isMobileMoneyAgent && !networkName)) {
+    if (
+      !amount ||
+      !customerIdentifier ||
+      (isMobileMoneyAgent && !networkName)
+    ) {
       Toast.show({
         type: "error",
         text1: t("all_fields_required"),
@@ -284,7 +295,11 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
 
     Alert.alert(
       t("transaction_details"),
-      `${t("amount")}: ${amount}\n${t("customer_identifier")}: ${customerIdentifier}\n${isMobileMoneyAgent ? `${t("network_name")}: ${networkName}` : ""}`,
+      `${t("amount")}: ${amount}\n${t(
+        "customer_identifier"
+      )}: ${customerIdentifier}\n${
+        isMobileMoneyAgent ? `${t("network_name")}: ${networkName}` : ""
+      }`,
       [
         {
           text: t("cancel"),
@@ -311,124 +326,43 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={[styles.container, { backgroundColor: colors.background }]}
+      // Renamed from 'container' and removed padding here to allow background to extend fully
+      style={[
+        styles.fullScreenContainer,
+        { backgroundColor: colors.background },
+      ]}
     >
       {/* StatusBar style adjusted for light background */}
-      <StatusBar barStyle={"dark-content"} />
+      {/* Set translucent to true and backgroundColor to transparent to allow content behind */}
+      <StatusBar
+        barStyle={"dark-content"}
+        translucent={true}
+        backgroundColor="transparent"
+      />
+      {/* New container for content with padding, to push content below the status bar */}
+      <View style={styles.contentContainer}>
 
-      <Text style={[styles.title, { color: colors.text }]}>
-        {t("transaction_form_title")}
-      </Text>
-
-      {/* Amount Input */}
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, { color: colors.text }]}>
-          {t("amount")}
-        </Text>
-        <View style={styles.inputWithMic}>
-          <TextInput
-            ref={amountInputRef}
-            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-            keyboardType="numeric"
-            value={amount}
-            onChangeText={(text) => {
-              setAmount(text.replace(/[^0-9]/g, ''));
-            }}
-            placeholder={t("enter_amount")}
-            placeholderTextColor={colors.placeholder}
-            onFocus={() => {
-              if (isListeningAmount) {
-                stopRecognizing();
-              }
-            }}
-          />
-          <TouchableOpacity
-            style={styles.micButton}
-            onPress={() =>
-              isListeningAmount ? stopRecognizing() : startRecognizing("amount")
-            }
-          >
-            {isLoading && isListeningAmount ? (
-              <ActivityIndicator size="small" color="#FF0000" />
-            ) : (
-              <Ionicons
-                name={isListeningAmount ? "mic" : "mic-outline"}
-                size={24}
-                color={getMicIconColor(isListeningAmount)}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-        {isListeningAmount && partialResults.length > 0 && (
-          <Text style={[styles.partialResult, { color: colors.textSecondary }]}>
-            {t("listening")}: {partialResults[0]}
-          </Text>
-        )}
-      </View>
-
-      {/* Customer Identifier Input */}
-      <View style={styles.inputContainer}>
-        <Text style={[styles.label, { color: colors.text }]}>
-          {t("customer_identifier")}
-        </Text>
-        <View style={styles.inputWithMic}>
-          <TextInput
-            ref={customerIdentifierInputRef}
-            style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-            keyboardType="default"
-            value={customerIdentifier}
-            onChangeText={setCustomerIdentifier}
-            placeholder={t("enter_customer_identifier")}
-            placeholderTextColor={colors.placeholder}
-            onFocus={() => {
-              if (isListeningCustomerIdentifier) {
-                stopRecognizing();
-              }
-            }}
-          />
-          <TouchableOpacity
-            style={styles.micButton}
-            onPress={() =>
-              isListeningCustomerIdentifier
-                ? stopRecognizing()
-                : startRecognizing("customerIdentifier")
-            }
-          >
-            {isLoading && isListeningCustomerIdentifier ? (
-              <ActivityIndicator size="small" color="#FF0000" />
-            ) : (
-              <Ionicons
-                name={isListeningCustomerIdentifier ? "mic" : "mic-outline"}
-                size={24}
-                color={getMicIconColor(isListeningCustomerIdentifier)}
-              />
-            )}
-          </TouchableOpacity>
-        </View>
-        {isListeningCustomerIdentifier && partialResults.length > 0 && (
-          <Text style={[styles.partialResult, { color: colors.textSecondary }]}>
-            {t("listening")}: {partialResults[0]}
-          </Text>
-        )}
-      </View>
-
-      {/* Network Name Input (Conditional for Mobile Money Agent) */}
-      {isMobileMoneyAgent && (
+        {/* Amount Input */}
         <View style={styles.inputContainer}>
           <Text style={[styles.label, { color: colors.text }]}>
-            {t("network_name")}
+            {t("amount")}
           </Text>
           <View style={styles.inputWithMic}>
             <TextInput
-              ref={networkNameInputRef}
-              style={[styles.input, { borderColor: colors.border, color: colors.text }]}
-              keyboardType="default"
-              value={networkName}
-              onChangeText={setNetworkName}
-              placeholder={t("enter_network_name")}
+              ref={amountInputRef}
+              style={[
+                styles.input,
+                { borderColor: colors.border, color: colors.text },
+              ]}
+              keyboardType="numeric"
+              value={amount}
+              onChangeText={(text) => {
+                setAmount(text.replace(/[^0-9]/g, ""));
+              }}
+              placeholder={t("enter_amount")}
               placeholderTextColor={colors.placeholder}
               onFocus={() => {
-                if (isListeningNetworkName) {
+                if (isListeningAmount) {
                   stopRecognizing();
                 }
               }}
@@ -436,64 +370,178 @@ export default function TransactionForm({ isMobileMoneyAgent }) {
             <TouchableOpacity
               style={styles.micButton}
               onPress={() =>
-                isListeningNetworkName
+                isListeningAmount
                   ? stopRecognizing()
-                  : startRecognizing("networkName")
+                  : startRecognizing("amount")
               }
             >
-              {isLoading && isListeningNetworkName ? (
+              {isLoading && isListeningAmount ? (
                 <ActivityIndicator size="small" color="#FF0000" />
               ) : (
                 <Ionicons
-                  name={isListeningNetworkName ? "mic" : "mic-outline"}
+                  name={isListeningAmount ? "mic" : "mic-outline"}
                   size={24}
-                  color={getMicIconColor(isListeningNetworkName)}
+                  color={getMicIconColor(isListeningAmount)}
                 />
               )}
             </TouchableOpacity>
           </View>
-          {isListeningNetworkName && partialResults.length > 0 && (
-            <Text style={[styles.partialResult, { color: colors.textSecondary }]}>
+          {isListeningAmount && partialResults.length > 0 && (
+            <Text
+              style={[styles.partialResult, { color: colors.textSecondary }]}
+            >
               {t("listening")}: {partialResults[0]}
             </Text>
           )}
         </View>
-      )}
 
-      {/* Buttons */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.clearButton} onPress={clearInputs}>
-          <LinearGradient
-            colors={["#FFD700", "#FFA500"]}
-            style={styles.gradientButton}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Text style={styles.buttonText}>{t("clear")}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        {/* Customer Identifier Input */}
+        <View style={styles.inputContainer}>
+          <Text style={[styles.label, { color: colors.text }]}>
+            {t("customer_identifier")}
+          </Text>
+          <View style={styles.inputWithMic}>
+            <TextInput
+              ref={customerIdentifierInputRef}
+              style={[
+                styles.input,
+                { borderColor: colors.border, color: colors.text },
+              ]}
+              keyboardType="default"
+              value={customerIdentifier}
+              onChangeText={setCustomerIdentifier}
+              placeholder={t("enter_customer_identifier")}
+              placeholderTextColor={colors.placeholder}
+              onFocus={() => {
+                if (isListeningCustomerIdentifier) {
+                  stopRecognizing();
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.micButton}
+              onPress={() =>
+                isListeningCustomerIdentifier
+                  ? stopRecognizing()
+                  : startRecognizing("customerIdentifier")
+              }
+            >
+              {isLoading && isListeningCustomerIdentifier ? (
+                <ActivityIndicator size="small" color="#FF0000" />
+              ) : (
+                <Ionicons
+                  name={isListeningCustomerIdentifier ? "mic" : "mic-outline"}
+                  size={24}
+                  color={getMicIconColor(isListeningCustomerIdentifier)}
+                />
+              )}
+            </TouchableOpacity>
+          </View>
+          {isListeningCustomerIdentifier && partialResults.length > 0 && (
+            <Text
+              style={[styles.partialResult, { color: colors.textSecondary }]}
+            >
+              {t("listening")}: {partialResults[0]}
+            </Text>
+          )}
+        </View>
 
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <LinearGradient
-            colors={["#4CAF50", "#2E8B57"]}
-            style={styles.gradientButton}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-          >
-            <Text style={styles.buttonText}>{t("submit")}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+        {/* Network Name Input (Conditional for Mobile Money Agent) */}
+        {isMobileMoneyAgent && (
+          <View style={styles.inputContainer}>
+            <Text style={[styles.label, { color: colors.text }]}>
+              {t("network_name")}
+            </Text>
+            <View style={styles.inputWithMic}>
+              <TextInput
+                ref={networkNameInputRef}
+                style={[
+                  styles.input,
+                  { borderColor: colors.border, color: colors.text },
+                ]}
+                keyboardType="default"
+                value={networkName}
+                onChangeText={setNetworkName}
+                placeholder={t("enter_network_name")}
+                placeholderTextColor={colors.placeholder}
+                onFocus={() => {
+                  if (isListeningNetworkName) {
+                    stopRecognizing();
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={styles.micButton}
+                onPress={() =>
+                  isListeningNetworkName
+                    ? stopRecognizing()
+                    : startRecognizing("networkName")
+                }
+              >
+                {isLoading && isListeningNetworkName ? (
+                  <ActivityIndicator size="small" color="#FF0000" />
+                ) : (
+                  <Ionicons
+                    name={isListeningNetworkName ? "mic" : "mic-outline"}
+                    size={24}
+                    color={getMicIconColor(isListeningNetworkName)}
+                  />
+                )}
+              </TouchableOpacity>
+            </View>
+            {isListeningNetworkName && partialResults.length > 0 && (
+              <Text
+                style={[styles.partialResult, { color: colors.textSecondary }]}
+              >
+                {t("listening")}: {partialResults[0]}
+              </Text>
+            )}
+          </View>
+        )}
 
+        {/* Buttons */}
+        <View style={styles.buttonContainer}>
+          <TouchableOpacity style={styles.clearButton} onPress={clearInputs}>
+            <LinearGradient
+              colors={["#FFD700", "#FFA500"]}
+              style={styles.gradientButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.buttonText}>{t("clear")}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+            <LinearGradient
+              colors={["#4CAF50", "#2E8B57"]}
+              style={styles.gradientButton}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+            >
+              <Text style={styles.buttonText}>{t("submit")}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+      </View>{" "}
+      {/* End of contentContainer */}
       <Toast />
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  fullScreenContainer: {
+    // Renamed from 'container'
     flex: 1,
-    padding: 20,
+    // Removed padding here to allow background to extend
+  },
+  contentContainer: {
+    // New container for content with padding
+    flex: 1,
+    padding: 20, // Apply padding here for content
+    // Add status bar height for Android to push content down, iOS is handled by KeyboardAvoidingView behavior="padding"
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 20 : 20,
   },
   title: {
     fontSize: 28,

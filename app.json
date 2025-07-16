@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hand Shop",
-    "slug": "inventory-logger",
+    "slug": "hand-shop",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -58,7 +58,7 @@
     },
     "extra": {
       "eas": {
-        "projectId": "8da405a1-91d1-4eaa-82dd-802334468e07"
+        "projectId": "1e65e746-e956-47ae-a11a-0d4807c69d5b"
       }
     }
   }
