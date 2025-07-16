@@ -36,8 +36,6 @@
       "versionCode": 1
     },
     "plugins": [
-      "./plugins/withAndroidManifestModifications.js",
-      "./plugins/withAndroidExcludes.js",
       [
         "expo-build-properties",
         {
@@ -76,6 +74,10 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "e41bcf40-91d4-4589-a521-11575f1fe256"
+      }
+    }
   }
 }
