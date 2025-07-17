@@ -36,7 +36,9 @@
       "versionCode": 1
     },
     "plugins": [
-      [
+      "./plugins/withAndroidManifestModifications.js",
+      "./plugins/withAndroidExcludes.js",
+     [
         "expo-build-properties",
         {
           "android": {
@@ -46,20 +48,17 @@
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
             "kotlinVersion": "2.0.21",
-            "extraMainActivityFeatures": [
-              {
-                "target": "queries",
-                "resource": {
-                  "target": "intent",
-                  "resource": {
-                    "target": "action",
-                    "resource": {
+            "manifest": {
+              "queries": [
+                {
+                  "intent": {
+                    "action": {
                       "name": "android.speech.RecognitionService"
                     }
                   }
                 }
-              }
-            ]
+              ]
+            }
           }
         }
       ],
