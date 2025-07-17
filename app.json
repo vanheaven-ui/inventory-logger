@@ -38,7 +38,7 @@
     "plugins": [
       "./plugins/withAndroidManifestModifications.js",
       "./plugins/withAndroidExcludes.js",
-     [
+      [
         "expo-build-properties",
         {
           "android": {
@@ -47,18 +47,7 @@
             "minSdkVersion": 24,
             "compileSdkVersion": 35,
             "targetSdkVersion": 35,
-            "kotlinVersion": "2.0.21",
-            "manifest": {
-              "queries": [
-                {
-                  "intent": {
-                    "action": {
-                      "name": "android.speech.RecognitionService"
-                    }
-                  }
-                }
-              ]
-            }
+            "kotlinVersion": "2.0.21"
           }
         }
       ],
@@ -68,14 +57,15 @@
           "microphonePermission": "Allow Hand Shop to use the microphone for voice input.",
           "speechRecognitionPermission": "Allow Hand Shop to securely recognize user speech."
         }
-      ]
+      ],
+      "./plugins/withVoiceQueries.js"
     ],
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "extra": {
       "eas": {
-        "projectId": "e41bcf40-91d4-4589-a521-11575f1fe256"
+        "projectId": "10f7f43c-5884-4b1d-a4c7-9c938638c8cd"
       }
     }
   }
