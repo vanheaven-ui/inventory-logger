@@ -32,7 +32,7 @@ import {
   MIN_PHYSICAL_CASH_REQUIRED,
   // MIN_FLOAT_REQUIRED_PER_NETWORK, // You might want to import this if you plan to display it
   // clearAllStorage // <-- For testing purposes, uncomment if needed
-} from "../storage/transactionStorage";
+} from "../storage/dataStorage";
 
 export default function ManageFloatScreen() {
   const navigation = useNavigation();

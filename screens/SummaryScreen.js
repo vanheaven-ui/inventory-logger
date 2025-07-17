@@ -21,7 +21,7 @@ import {
   getDailySummaryData,
   getPhysicalCash,
   savePhysicalCash,
-} from "../storage/transactionStorage";
+} from "../storage/dataStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const IS_AGENT_KEY = "isMobileMoneyAgent";

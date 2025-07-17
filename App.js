@@ -1,7 +1,12 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react"; 
+import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
-import Toast from "react-native-toast-message";
+import Toast, {
+  BaseToast,
+  ErrorToast,
+  SuccessToast,
+} from "react-native-toast-message"; // Import BaseToast, ErrorToast, SuccessToast
 
 // Import screens
 import HomeScreen from "./screens/HomeScreen";
@@ -15,15 +20,123 @@ import ManageFloatScreen from "./screens/ManageFloatScreen";
 // Import LanguageContext
 import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 
+// Import the initialization function
+import { initializeShopData } from "./storage/initialization"
+
 // Define the color palette
 const Colors = {
-  primary: "#007bff", 
-  primaryDark: "#0056b3", 
+  primary: "#007bff",
+  primaryDark: "#0056b3",
   white: "#ffffff",
-  textDark: "#2c3e50", 
+  textDark: "#2c3e50",
+  success: "#28a745", // Green for success
+  error: "#dc3545", // Red for error
+  info: "#17a2b8", // Blue-ish for info
+  warning: "#ffc107", // Yellow-orange for warning
+  lightGray: "#f8f8f8",
+  mediumGray: "#cccccc",
+  darkGray: "#666666",
 };
 
 const Stack = createNativeStackNavigator();
+
+// 1. Define custom Toast styles (ToastConfig)
+const toastConfig = {
+  success: (props) => (
+    <SuccessToast
+      {...props}
+      style={{
+        borderLeftColor: Colors.success,
+        height: 70,
+        backgroundColor: Colors.white,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={{
+        fontSize: 16, // Slightly larger
+        fontWeight: "bold", // Make it bold
+        color: Colors.textDark,
+      }}
+      text2Style={{
+        fontSize: 13,
+        color: Colors.darkGray,
+      }}
+      // Add more customization for visibility/shadow if needed
+      // containerStyle={{ elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 }}
+    />
+  ),
+  error: (props) => (
+    <ErrorToast
+      {...props}
+      style={{
+        borderLeftColor: Colors.error,
+        height: 70,
+        backgroundColor: Colors.white,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={{
+        fontSize: 16,
+        fontWeight: "bold",
+        color: Colors.textDark,
+      }}
+      text2Style={{
+        fontSize: 13,
+        color: Colors.darkGray,
+      }}
+    />
+  ),
+  info: (props) => (
+    <BaseToast // Using BaseToast for custom info appearance
+      {...props}
+      style={{
+        borderLeftColor: Colors.info,
+        height: 70,
+        backgroundColor: Colors.white,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={{
+        fontSize: 16,
+        fontWeight: "bold",
+        color: Colors.textDark,
+      }}
+      text2Style={{
+        fontSize: 13,
+        color: Colors.darkGray,
+      }}
+    />
+  ),
+  warning: (
+    props // Added a warning toast type
+  ) => (
+    <BaseToast
+      {...props}
+      style={{
+        borderLeftColor: Colors.warning,
+        height: 70,
+        backgroundColor: Colors.white,
+      }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={{
+        fontSize: 16,
+        fontWeight: "bold",
+        color: Colors.textDark,
+      }}
+      text2Style={{
+        fontSize: 13,
+        color: Colors.darkGray,
+      }}
+    />
+  ),
+  // You can add more custom types here if you need unique designs
+  // For example:
+  // custom_success: (props) => (
+  //   <BaseToast
+  //     {...props}
+  //     style={{ borderLeftColor: 'purple', borderWidth: 2 }}
+  //     text1Style={{ fontSize: 18, color: 'purple' }}
+  //     text2Style={{ fontSize: 14 }}
+  //   />
+  // )
+};
 
 function AppNavigatorContent() {
   const { t, language } = useLanguage(); // Get translation function and current language
@@ -33,32 +146,32 @@ function AppNavigatorContent() {
     (screenName) => {
       switch (screenName) {
         case "Transaction":
-          return t("record_transaction_title"); 
+          return t("record_transaction_title");
         case "Summary":
           return t("daily_summary_title");
         case "History":
           return t("transaction_history_title");
         case "Inventory":
-          return t("inventory_title"); // Or "manage_float_title" based on agent status if you want dynamic header here
+          return t("inventory_title");
         case "ManageItem":
-          return t("manage_item_title"); // Or "add_item_title", "edit_item_title"
-        case "ManageFloat": 
+          return t("manage_item_title");
+        case "ManageFloat":
           return t("manage_float");
         default:
           return t("app_name"); // Fallback for undefined
       }
     },
     [t, language]
-  ); 
+  );
 
   return (
     <Stack.Navigator
       initialRouteName="Home"
       screenOptions={{
         headerStyle: {
-          backgroundColor: Colors.primary, 
+          backgroundColor: Colors.primary,
         },
-        headerTintColor: Colors.white, 
+        headerTintColor: Colors.white,
         headerTitleStyle: {
           fontWeight: "bold",
           fontSize: 20,
@@ -70,7 +183,7 @@ function AppNavigatorContent() {
         name="Home"
         component={HomeScreen}
         options={{
-          headerShown: false, 
+          headerShown: false,
         }}
       />
       <Stack.Screen
@@ -99,21 +212,17 @@ function AppNavigatorContent() {
         component={InventoryScreen}
         options={{
           headerTitle: getHeaderTitle("Inventory"),
-          // If you want to dynamically change this based on agent status,
-          // InventoryScreen would need to set its own header via useLayoutEffect
-          // or you'd need to pass the isMobileMoneyAgent prop down to affect this title.
         }}
       />
       <Stack.Screen
         name="ManageItem"
         component={ManageItemScreen}
         options={({ route }) => ({
-          // Use route to get params for dynamic title
-          presentation: "modal", // Opens as a modal, common for forms
+          presentation: "modal",
           headerTitle: route.params?.itemId
             ? t("edit_item_title")
-            : t("add_new_item_title"), // Example: "Edit Item" vs "Add New Item"
-          headerLeft: () => null, // Hide back button for modals (users expect a dismiss button)
+            : t("add_new_item_title"),
+          headerLeft: () => null,
         })}
       />
       <Stack.Screen
@@ -121,8 +230,8 @@ function AppNavigatorContent() {
         component={ManageFloatScreen}
         options={({ route }) => ({
           headerTitle: getHeaderTitle("ManageFloat"),
-          presentation: "modal", // Opens as a modal, similar to ManageItem
-          headerLeft: () => null, // Hide back button for modals
+          presentation: "modal",
+          headerLeft: () => null,
         })}
       />
     </Stack.Navigator>
@@ -130,12 +239,61 @@ function AppNavigatorContent() {
 }
 
 export default function App() {
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    async function prepareApp() {
+      try {
+        // Run the initialization logic when the app mounts
+        await initializeShopData();
+        // You can load other initial data or perform other startup tasks here
+      } catch (e) {
+        console.error("Failed to prepare app data:", e);
+        // Implement error handling, e.g., show an error message to the user
+        Toast.show({
+          type: "error",
+          text1: "Initialization Error",
+          text2: "Failed to load initial shop data. Please restart the app.",
+          position: "top",
+        });
+      } finally {
+        setIsLoading(false); // Once data is loaded/checked, stop loading
+      }
+    }
+
+    prepareApp();
+  }, []); // The empty dependency array ensures this runs only once on mount
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        {/* You need to define styles here or import them */}
+        <ActivityIndicator size="large" color={Colors.primary} />
+        <Text style={styles.loadingText}>Setting up your shop data...</Text>
+      </View>
+    );
+  }
+
   return (
     <LanguageProvider>
       <NavigationContainer>
         <AppNavigatorContent />
       </NavigationContainer>
-      <Toast />
+      <Toast config={toastConfig} />
     </LanguageProvider>
   );
 }
+
+const styles = {
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: Colors.lightGray,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 18,
+    color: Colors.textDark,
+  },
+};

@@ -5,23 +5,24 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
-  KeyboardAvoidingView, // Keep KeyboardAvoidingView for keyboard behavior
+  KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   Alert,
   PermissionsAndroid,
-  SafeAreaView, 
+  SafeAreaView,
 } from "react-native";
 import Voice from "@react-native-voice/voice";
-import { useLanguage } from "../context/LanguageContext"; 
+import { useNavigation } from "@react-navigation/native"; // Import useNavigation
+import { useLanguage } from "../context/LanguageContext";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 
-import { saveTransaction, calculateCommission } from "../storage/transactionStorage";
-
-console.log(Voice);
-
+import {
+  saveTransaction,
+  calculateCommission,
+} from "../storage/dataStorage";
 
 // Helper function to request microphone permission
 const requestMicrophonePermission = async (t) => {
@@ -62,12 +63,9 @@ const requestMicrophonePermission = async (t) => {
   return true;
 };
 
-// TransactionForm now receives 'type' as a prop from TransactionScreen
 export default function TransactionForm({ type, isMobileMoneyAgent }) {
-  // REMOVED: Transaction Category State - no longer needed as isMobileMoneyAgent prop directly controls form
-  // const [transactionCategory, setTransactionCategory] = useState(
-  //   isMobileMoneyAgent ? "mobileMoney" : "shop"
-  // );
+  const navigation = useNavigation(); // Initialize navigation hook
+  const { t, language } = useLanguage();
 
   // Input States
   const [amount, setAmount] = useState(""); // For MM: transaction value
@@ -85,9 +83,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
   const [isListeningItemName, setIsListeningItemName] = useState(false);
   const [isListeningQuantity, setIsListeningQuantity] = useState(false);
   const [isListeningNetworkName, setIsListeningNetworkName] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const { t, language } = useLanguage();
+  const [isLoading, setIsLoading] = useState(false); // Indicates general loading for speech
 
   // Hardcoded colors for a light theme
   const colors = {
@@ -139,7 +135,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     setIsListeningItemName(false);
     setIsListeningQuantity(false);
     setIsListeningNetworkName(false);
-    setIsLoading(false);
+    setIsLoading(false); // Reset general loading too
     setLastSpokenField(null);
   }, []);
 
@@ -162,23 +158,35 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
       console.log("onSpeechResults: ", e);
       if (e.value && e.value.length > 0) {
         const text = e.value[0];
-        const cleanedText = text.replace(/,|-|\s/g, ""); // Remove commas, dashes, spaces
+        // Clean text based on field type
+        let cleanedText = text;
+        if (
+          ["amount", "customerPhoneNumber", "quantity"].includes(
+            lastSpokenField
+          )
+        ) {
+          cleanedText =
+            text
+              .replace(/,|-|\s/g, "")
+              .match(/\d+/g)
+              ?.join("") || ""; // Extract only numbers
+        }
 
         switch (lastSpokenField) {
           case "amount":
-            setAmount(cleanedText.match(/\d+/g)?.join("") || ""); // Extract only numbers
+            setAmount(cleanedText);
             break;
           case "customerPhoneNumber":
-            setCustomerPhoneNumber(cleanedText.match(/\d+/g)?.join("") || ""); // Extract only numbers
+            setCustomerPhoneNumber(cleanedText);
             break;
           case "itemName":
-            setItemName(text);
+            setItemName(text); // Keep full text for item name
             break;
           case "quantity":
-            setQuantity(cleanedText.match(/\d+/g)?.join("") || "");
+            setQuantity(cleanedText);
             break;
           case "networkName":
-            setNetworkName(text);
+            setNetworkName(text); // Keep full text for network name
             break;
           default:
             break;
@@ -221,14 +229,28 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
   }, []);
 
   useEffect(() => {
-    Voice.onSpeechStart = onSpeechStart;
-    Voice.onSpeechEnd = onSpeechEnd;
-    Voice.onSpeechResults = onSpeechResults;
-    Voice.onSpeechError = onSpeechError;
-    Voice.onSpeechPartialResults = onSpeechPartialResults;
+    // Check if Voice is defined before assigning listeners
+    if (Voice) {
+      Voice.onSpeechStart = onSpeechStart;
+      Voice.onSpeechEnd = onSpeechEnd;
+      Voice.onSpeechResults = onSpeechResults;
+      Voice.onSpeechError = onSpeechError;
+      Voice.onSpeechPartialResults = onSpeechPartialResults;
+    } else {
+      console.warn(
+        "Voice module is not available. Speech recognition will not work."
+      );
+      Toast.show({
+        type: "error",
+        text1: t("voice_module_missing_title"),
+        text2: t("voice_module_missing_message"),
+      });
+    }
 
     return () => {
-      Voice.destroy().then(Voice.removeAllListeners);
+      if (Voice) {
+        Voice.destroy().then(Voice.removeAllListeners);
+      }
     };
   }, [
     onSpeechStart,
@@ -236,6 +258,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     onSpeechResults,
     onSpeechError,
     onSpeechPartialResults,
+    t, // Add t to dependency array for translations in Toast
   ]);
 
   const startRecognizing = async (field) => {
@@ -248,7 +271,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
       isListeningQuantity
     ) {
       await stopRecognizing();
-      resetListeningStates();
+      resetListeningStates(); // Ensure all states are reset before new start
     }
 
     const hasPermission = await requestMicrophonePermission(t);
@@ -352,10 +375,8 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     // Determine the actual transaction type based on 'isMobileMoneyAgent' and the 'type' prop from parent
     let actualTransactionType;
     if (!isMobileMoneyAgent) {
-      // Shop transaction
       actualTransactionType = type; // 'sell' or 'restock' from prop
     } else {
-      // Mobile Money transaction
       actualTransactionType = type === "sell" ? "withdrawal" : "deposit"; // Map prop 'sell' to 'withdrawal', 'restock' to 'deposit'
     }
 
@@ -378,9 +399,9 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
           itemName: itemName.trim(),
           quantity: Number(quantity),
           amount: 0, // Placeholder, actual amount derived from DB selling price * quantity
-          customerIdentifier: null, // Not applicable for general sales
-          networkName: null, // Not applicable
-          commissionEarned: 0, // Not applicable
+          customerIdentifier: null,
+          networkName: null,
+          commissionEarned: 0,
         };
         displayMessage = `${t("item_name")}: ${itemName}\n${t(
           "quantity"
@@ -416,7 +437,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
 
       let commission = 0;
       if (actualTransactionType === "deposit") {
-        // Now using 'deposit'
         commission = calculateCommission(
           networkName,
           Number(amount),
@@ -440,7 +460,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
           "commission"
         )}: ${commission}`;
       } else if (actualTransactionType === "withdrawal") {
-        // Now using 'withdrawal'
         commission = calculateCommission(
           networkName,
           Number(amount),
@@ -473,8 +492,15 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
         onPress: async () => {
           try {
             await saveTransaction(transactionData);
-            Toast.show({ type: "success", text1: t("transaction_successful") });
-            clearInputs();
+            Toast.show({
+              type: "success",
+              text1: t("transaction_successful"),
+              text2: isMobileMoneyAgent
+                ? t("float_updated_and_commission_calculated")
+                : t("inventory_updated"),
+            });
+            // Redirect to the Home screen after successful transaction
+            navigation.navigate("Home"); // Make sure 'Home' is a valid route name in your navigator
           } catch (error) {
             console.error("Failed to save transaction:", error);
             Toast.show({
@@ -511,7 +537,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
   };
 
   return (
-    // Wrap KeyboardAvoidingView inside SafeAreaView
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -521,8 +546,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
         ]}
       >
         <View style={styles.contentContainer}>
-          {/* REMOVED: Transaction Category Selector */}
-
           {/* Dynamic Input Fields based on isMobileMoneyAgent prop and Type */}
           {!isMobileMoneyAgent ? ( // Shop transaction fields
             <>
@@ -820,7 +843,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
             </TouchableOpacity>
           </View>
         </View>
-        <Toast />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -829,7 +851,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f6f6f6", // Match your InventoryScreen's SafeAreaView background
+    backgroundColor: "#f6f6f6",
   },
   fullScreenContainer: {
     flex: 1,
@@ -837,29 +859,7 @@ const styles = StyleSheet.create({
   contentContainer: {
     flex: 1,
     padding: 20,
-    paddingTop: 20, // Now fixed padding, SafeAreaView handles the top inset
-  },
-  // Removed title style as the Text component is removed
-  categorySelector: {
-    // REMOVED: This style is no longer used by any component
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 20,
-    backgroundColor: "#e0e0e0",
-    borderRadius: 10,
-    overflow: "hidden",
-  },
-  categoryButton: {
-    // REMOVED: This style is no longer used by any component
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  categoryButtonText: {
-    // REMOVED: This style is no longer used by any component
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333333",
+    paddingTop: 20,
   },
   inputContainer: {
     marginBottom: 20,

@@ -16,7 +16,7 @@ import { useLanguage } from "../context/LanguageContext"; // Assuming you have t
 import {
   saveInventoryItem, // This function should save/update GENERAL inventory items
   // getGeneralInventoryItems, // Not directly used in this component, but good to keep in mind
-} from "../storage/transactionStorage"; // Ensure saveInventoryItem is exported
+} from "../storage/dataStorage"; // Ensure saveInventoryItem is exported
 
 export default function ManageItemScreen() {
   const navigation = useNavigation();

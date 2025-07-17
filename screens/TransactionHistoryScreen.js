@@ -13,7 +13,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   getTransactions,
   overwriteTransactions,
-} from "../storage/transactionStorage";
+} from "../storage/dataStorage";
 
 const IS_AGENT_KEY = "isMobileMoneyAgent";
 
