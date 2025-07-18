@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main # Or 'master', or any branch you want to trigger builds on
-  workflow_dispatch: # Allows you to trigger the workflow manually from GitHub Actions UI
+  workflow_dispatch: # Allows you to trigger the workflow manually from GitHub Actions UI (useful for testing)
 
 jobs:
   build-android:
@@ -17,7 +17,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20 # Use a Node.js version compatible with your Expo SDK
+          node-version: 20 # Use a Node.js version compatible with your Expo SDK (e.g., 18.x, 20.x, or whatever your app uses)
 
       - name: Install dependencies
         run: npm install # Or 'yarn install' if you use Yarn
@@ -25,54 +25,55 @@ jobs:
       - name: Set up Java Development Kit
         uses: actions/setup-java@v4
         with:
-          distribution: "temurin" # Or 'zulu', 'oracle'
-          java-version: "17" # Java 17 is generally recommended for recent Android/RN
+          distribution: "temurin"
+          java-version: "17" # Java 17 is generally recommended for recent Android/React Native versions
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v2 # Action to ensure Android SDK is available
+        uses: android-actions/setup-android@v2
         with:
-          api-level: 35 # Match your targetSdkVersion
-          build-tools: 35.0.0 # Match your buildToolsVersion
-          cmake: 3.22.1 # Optional, if you use native code that needs CMake
+          api-level: 34 # IMPORTANT: Adjust to your app.json's android.targetSdkVersion. (e.g., 34, 33, 35)
+          build-tools: 34.0.0 # IMPORTANT: Adjust to your app.json's android.buildToolsVersion (e.g., 34.0.0)
+          # cmake: 3.22.1 # Uncomment if you have native modules that explicitly need CMake
 
       - name: Run expo prebuild
-        run: npx expo prebuild --no-install --clean # --no-install prevents npm/yarn install in generated native project
+        # This generates the 'android' native folder based on your app.json and plugins.
+        # '--no-install' prevents it from running npm/yarn install inside the generated native project.
+        run: npx expo prebuild --platform android --clean --no-install
 
       - name: Create keystore file
+        # This step decodes the Base64 keystore secret back into a .keystore file.
+        # We're placing it directly in the 'android/' folder (root of the native project).
+        # This is a common location and is easily referenced by Gradle.
         run: |
-          echo "$ANDROID_SIGNING_KEYSTORE" | base64 --decode > android/app/my-upload-key.keystore
+          echo "$ANDROID_SIGNING_KEYSTORE" | base64 --decode > android/my-upload-key.keystore
         env:
           ANDROID_SIGNING_KEYSTORE: ${{ secrets.ANDROID_SIGNING_KEYSTORE }}
 
-      - name: Create `gradle.properties` for signing
-        run: |
-          echo "MYAPP_UPLOAD_STORE_FILE=my-upload-key.keystore" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.ANDROID_STORE_PASSWORD }}" >> android/gradle.properties
-          echo "MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> android/gradle.properties
-
-      - name: Change package name in build.gradle (if different from default)
-        # This step is crucial if your app.json package is different from 'com.yourapp'
-        # Look at your android/app/build.gradle after prebuild to see the default,
-        # and compare it to what's in app.json. If they differ, uncomment and adjust.
-        # Otherwise, you might face package name issues during build.
-        # Example: Replace 'com.vanheaven.inventorylogger'
-        run: |
-          sed -i "s|namespace = 'com.vanheaven.inventorylogger'|namespace = 'com.vanheaven.inventorylogger'|g" android/app/build.gradle
-          sed -i "s|applicationId = 'com.vanheaven.inventorylogger'|applicationId = 'com.vanheaven.inventorylogger'|g" android/app/build.gradle
-        # You should verify what `app.json` generates for `namespace` and `applicationId`
-        # by running `npx expo prebuild` locally and checking `android/app/build.gradle`.
-        # Usually, they derive directly from `expo.android.package`. This step might not be needed.
+      # Removed the 'Create `gradle.properties` for signing' step.
+      # We will pass secrets as environment variables directly to Gradle in the build step.
 
       - name: Build Android Release APK
-        run: cd android && ./gradlew assembleRelease # For AAB use: ./gradlew bundleRelease
+        # This command builds the release APK.
+        # We now pass the signing credentials directly as environment variables to Gradle.
+        # Gradle automatically picks up variables prefixed with 'ORG_GRADLE_PROJECT_' as project properties.
+        # These variable names (storeFile, keyAlias, etc.) are the standard ones Gradle expects internally.
+        run: cd android && ./gradlew assembleRelease
+        env:
+          ORG_GRADLE_PROJECT_storeFile: "my-upload-key.keystore" # This refers to the file placed in 'android/'
+          ORG_GRADLE_PROJECT_keyAlias: "${{ secrets.ANDROID_KEY_ALIAS }}"
+          ORG_GRADLE_PROJECT_storePassword: "${{ secrets.ANDROID_STORE_PASSWORD }}"
+          ORG_GRADLE_PROJECT_keyPassword: "${{ secrets.ANDROID_KEY_PASSWORD }}"
 
       - name: Upload APK artifact
+        # This makes the generated APK available for download from the GitHub Actions run summary.
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: android/app/build/outputs/apk/release/app-release.apk # Adjust path for AAB: android/app/build/outputs/bundle/release/app-release.aab
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 7 # Optional: how long to keep the artifact on GitHub
 
-      - name: Clean up keystore
-        run: rm android/app/my-upload-key.keystore # Clean up sensitive file
+      - name: Clean up sensitive keystore file
+        # Important security step: remove the decoded keystore file from the runner's disk.
+        # Updated path to reflect the new keystore location.
+        run: rm android/my-upload-key.keystore
         if: always() # Always run this step, even if previous steps fail
