@@ -13,7 +13,7 @@ import {
   SafeAreaView,
 } from "react-native";
 import Voice from "@react-native-voice/voice";
-import { useNavigation } from "@react-navigation/native"; // Import useNavigation
+import { useNavigation } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
 import Toast from "react-native-toast-message";
 import { Ionicons } from "@expo/vector-icons";
@@ -22,9 +22,10 @@ import { LinearGradient } from "expo-linear-gradient";
 import {
   saveTransaction,
   calculateCommission,
-} from "../storage/dataStorage";
+  getFloatEntries, // <--- Import getFloatEntries to populate network names
+} from "../storage/dataStorage"; // Make sure this path is correct
 
-// Helper function to request microphone permission
+// Helper function to request microphone permission (no change, but including for completeness)
 const requestMicrophonePermission = async (t) => {
   if (Platform.OS === "android") {
     try {
@@ -64,7 +65,7 @@ const requestMicrophonePermission = async (t) => {
 };
 
 export default function TransactionForm({ type, isMobileMoneyAgent }) {
-  const navigation = useNavigation(); // Initialize navigation hook
+  const navigation = useNavigation();
   const { t, language } = useLanguage();
 
   // Input States
@@ -73,6 +74,11 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
   const [itemName, setItemName] = useState(""); // For Shop
   const [quantity, setQuantity] = useState(""); // For Shop
   const [networkName, setNetworkName] = useState(""); // For MM
+
+  // **NEW STATE FOR COMMISSION**
+  const [calculatedCommission, setCalculatedCommission] = useState(0);
+  // **NEW STATE FOR AVAILABLE NETWORKS (optional, but good for UI pickers)**
+  const [availableNetworks, setAvailableNetworks] = useState([]);
 
   // Voice Recognition States
   const [partialResults, setPartialResults] = useState([]);
@@ -139,7 +145,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     setLastSpokenField(null);
   }, []);
 
-  // Voice Recognition Handlers
+  // Voice Recognition Handlers (No changes here, keeping for completeness)
   const onSpeechStart = useCallback((e) => {
     console.log("onSpeechStart: ", e);
     setIsLoading(true);
@@ -258,7 +264,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     onSpeechResults,
     onSpeechError,
     onSpeechPartialResults,
-    t, // Add t to dependency array for translations in Toast
+    t,
   ]);
 
   const startRecognizing = async (field) => {
@@ -361,12 +367,72 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     setQuantity("");
     setNetworkName("");
     setPartialResults([]);
+    setCalculatedCommission(0); // <--- Clear calculated commission too
     resetListeningStates();
     Toast.show({
       type: "info",
       text1: t("inputs_cleared"),
     });
   }, [resetListeningStates, t]);
+
+  // --- NEW: FETCH AVAILABLE NETWORKS ON MOUNT ---
+  useEffect(() => {
+    const fetchNetworks = async () => {
+      try {
+        const entries = await getFloatEntries();
+        // Assuming itemName in floatEntries is the network name (e.g., "MTN Mobile Money")
+        setAvailableNetworks(entries.map((entry) => entry.itemName));
+      } catch (error) {
+        console.error("Failed to fetch float entries:", error);
+        Toast.show({
+          type: "error",
+          text1: t("error_fetching_networks"),
+          text2: error.message || t("could_not_load_mobile_money_networks"),
+        });
+      }
+    };
+
+    if (isMobileMoneyAgent) {
+      fetchNetworks();
+    }
+  }, [isMobileMoneyAgent, t]);
+
+  // --- NEW: REAL-TIME COMMISSION CALCULATION ---
+  useEffect(() => {
+    const calculateAndSetCommission = async () => {
+      if (isMobileMoneyAgent && networkName && amount && type) {
+        const parsedAmount = parseFloat(amount);
+        if (!isNaN(parsedAmount) && parsedAmount > 0) {
+          // Map the 'type' prop to 'deposit'/'withdrawal' for calculateCommission
+          const transactionTypeForCommission =
+            type === "sell" ? "withdrawal" : "deposit";
+          try {
+            const commission = await calculateCommission(
+              networkName,
+              parsedAmount,
+              transactionTypeForCommission
+            );
+            setCalculatedCommission(commission);
+          } catch (error) {
+            console.error("Error calculating commission:", error);
+            // Optionally, set commission to 0 or display an error
+            setCalculatedCommission(0);
+            // Toast.show({
+            //   type: "info",
+            //   text1: t("commission_calculation_error"),
+            //   text2: error.message,
+            // });
+          }
+        } else {
+          setCalculatedCommission(0); // Reset if amount is invalid
+        }
+      } else {
+        setCalculatedCommission(0); // Reset if not MM or inputs are incomplete
+      }
+    };
+
+    calculateAndSetCommission();
+  }, [amount, networkName, type, isMobileMoneyAgent]); // Recalculate if these change
 
   const handleSubmit = async () => {
     let transactionData = {};
@@ -377,10 +443,11 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     if (!isMobileMoneyAgent) {
       actualTransactionType = type; // 'sell' or 'restock' from prop
     } else {
-      actualTransactionType = type === "sell" ? "withdrawal" : "deposit"; // Map prop 'sell' to 'withdrawal', 'restock' to 'deposit'
+      // Map prop 'sell' to 'withdrawal', 'restock' to 'deposit' for MM context
+      actualTransactionType = type === "sell" ? "withdrawal" : "deposit";
     }
 
-    // Basic Validation - adjusted to use actualTransactionType
+    // Basic Validation
     if (!isMobileMoneyAgent) {
       // Shop transaction
       if (!itemName || !quantity) {
@@ -430,27 +497,25 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
         Toast.show({ type: "error", text1: t("all_fields_required") });
         return;
       }
-      if (isNaN(Number(amount)) || Number(amount) <= 0) {
+      const numAmount = Number(amount);
+      if (isNaN(numAmount) || numAmount <= 0) {
         Toast.show({ type: "error", text1: t("invalid_amount") });
         return;
       }
 
-      let commission = 0;
+      // **Use the pre-calculated commission**
+      const commission = calculatedCommission; // This will be 0 if calculation failed or inputs incomplete
+
       if (actualTransactionType === "deposit") {
-        commission = calculateCommission(
-          networkName,
-          Number(amount),
-          "deposit"
-        );
         transactionData = {
           isMobileMoney: true,
           type: "restock", // For MM, deposit is agent 'restocking' float
           itemName: networkName.trim(), // Network name is the 'item' for MM
-          quantity: Number(amount), // Amount is the quantity for MM
-          amount: Number(amount), // Total amount of transaction
+          quantity: numAmount, // Amount is the quantity for MM
+          amount: numAmount, // Total amount of transaction
           customerIdentifier: customerPhoneNumber.trim(),
           networkName: networkName.trim(),
-          commissionEarned: commission,
+          commissionEarned: commission, // **Using the calculated commission**
         };
         displayMessage = `${t("transaction_type")}: ${t("deposit")}\n${t(
           "network_name"
@@ -458,22 +523,17 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
           "customer_phone_number"
         )}: ${customerPhoneNumber}\n${t("amount")}: ${amount}\n${t(
           "commission"
-        )}: ${commission}`;
+        )}: ${commission.toFixed(2)}`; // Format commission for display
       } else if (actualTransactionType === "withdrawal") {
-        commission = calculateCommission(
-          networkName,
-          Number(amount),
-          "withdrawal"
-        );
         transactionData = {
           isMobileMoney: true,
           type: "sell", // For MM, withdrawal is agent 'selling' float
           itemName: networkName.trim(), // Network name is the 'item' for MM
-          quantity: Number(amount), // Amount is the quantity for MM
-          amount: Number(amount), // Total amount of transaction
+          quantity: numAmount, // Amount is the quantity for MM
+          amount: numAmount, // Total amount of transaction
           customerIdentifier: customerPhoneNumber.trim(),
           networkName: networkName.trim(),
-          commissionEarned: commission,
+          commissionEarned: commission, // **Using the calculated commission**
         };
         displayMessage = `${t("transaction_type")}: ${t("withdrawal")}\n${t(
           "network_name"
@@ -481,7 +541,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
           "customer_phone_number"
         )}: ${customerPhoneNumber}\n${t("amount")}: ${amount}\n${t(
           "commission"
-        )}: ${commission}`;
+        )}: ${commission.toFixed(2)}`; // Format commission for display
       }
     }
 
@@ -499,8 +559,7 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
                 ? t("float_updated_and_commission_calculated")
                 : t("inventory_updated"),
             });
-            // Redirect to the Home screen after successful transaction
-            navigation.navigate("Home"); // Make sure 'Home' is a valid route name in your navigator
+            navigation.navigate("Home");
           } catch (error) {
             console.error("Failed to save transaction:", error);
             Toast.show({
@@ -518,7 +577,6 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
     return isListening ? "#FF0000" : colors.text;
   };
 
-  // Determine which mic icon should be active for the current field
   const getActiveMicState = (field) => {
     switch (field) {
       case "amount":
@@ -812,6 +870,23 @@ export default function TransactionForm({ type, isMobileMoneyAgent }) {
                   </Text>
                 )}
               </View>
+
+              {/* Display Calculated Commission */}
+              {isMobileMoneyAgent &&
+                networkName &&
+                amount &&
+                parseFloat(amount) > 0 && (
+                  <View style={styles.commissionDisplayContainer}>
+                    <Text
+                      style={[styles.label, { color: colors.textSecondary }]}
+                    >
+                      {t("estimated_commission")}:
+                    </Text>
+                    <Text style={styles.commissionValue}>
+                      UGX {calculatedCommission.toFixed(2)}
+                    </Text>
+                  </View>
+                )}
             </>
           )}
 
@@ -889,6 +964,24 @@ const styles = StyleSheet.create({
     marginTop: 5,
     fontSize: 14,
     fontStyle: "italic",
+  },
+  // --- NEW STYLES FOR COMMISSION DISPLAY ---
+  commissionDisplayContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 10,
+    marginBottom: 20,
+    padding: 15,
+    borderRadius: 8,
+    backgroundColor: "#e8f5e9", // A light green background for emphasis
+    borderWidth: 1,
+    borderColor: "#a5d6a7", // A slightly darker green border
+  },
+  commissionValue: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#2E7D32", // Darker green text
   },
   buttonContainer: {
     flexDirection: "row",

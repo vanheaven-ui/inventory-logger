@@ -76,6 +76,8 @@ const getData = async (key) => {
 
 // --- Helper to save data ---
 const saveData = async (key, value) => {
+  console.log("Here: ", value);
+  
   try {
     const jsonValue = JSON.stringify(value);
     await AsyncStorage.setItem(key, jsonValue);
@@ -430,6 +432,8 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
     console.log(`--- saveGeneralInventoryItem: Processing "${itemToSave.itemName}" ---`);
 
     let currentInventory = await getGeneralInventoryItems(); // (A) Get current array
+    console.log(currentInventory);
+    
     console.log(`DEBUG: (A) currentInventory BEFORE modification for "${itemToSave.itemName}":`, JSON.stringify(currentInventory.map(item => item.itemName || 'unknown')));
 
     if (!Array.isArray(currentInventory)) {
