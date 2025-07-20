@@ -1,6 +1,6 @@
 // /hooks/useVoiceRecognition.js
 import { useState, useEffect, useCallback } from "react";
-import Voice from "@react-native-voice/voice";
+import * as Voice from '@react-native-voice/voice';
 import { PermissionsAndroid, Platform, Alert } from "react-native";
 
 const useVoiceRecognition = () => {

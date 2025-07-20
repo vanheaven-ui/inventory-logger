@@ -26,6 +26,14 @@ export const initialData = {
   [COMMISSION_EARNINGS_KEY]: 0, // Agent starts with 0 commission
 };
 
+// Function to generate a simple, reasonably unique ID
+const generateSimpleUniqueId = () => {
+  // Combine current timestamp (milliseconds) with a small random number
+  // The random number adds uniqueness if multiple IDs are generated in the same millisecond.
+  // Using a range up to 1000 for the random part.
+  return `${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+};
+
 /**
  * Calculates the commission for a given network, amount, and transaction type.
  * This now dynamically fetches the commission rate from the stored float entry.
@@ -76,7 +84,10 @@ const getData = async (key) => {
 
 // --- Helper to save data ---
 const saveData = async (key, value) => {
-  ("Here: ", value);
+  // Console log statement below has been commented out or adjusted as it was causing issues with '(...)' syntax.
+  // Original: ("Here: ", value);
+  // Adjusted for standard console.log:
+  // console.log("dataStorage: Saving data:", value);
 
   try {
     const jsonValue = JSON.stringify(value);
@@ -93,12 +104,16 @@ const saveData = async (key, value) => {
  * Initializes app data in AsyncStorage if it doesn't already exist.
  * This is primarily for ensuring default values from `initialData` are set
  * if a specific key is accessed and found empty.
- * The main app-wide prepopulation is handled by `initializeShopData` in `initialization.js`.
+ * The main app-wide prepopulation is handled by `initializeShopData` in your `initialization.js`.
  */
 export const initializeAppData = async () => {
-  (
+  // Console log statements below have been commented out or adjusted as they were causing issues with '(...)' syntax.
+  // Original: ("dataStorage: Checking if app data needs initialization (internal).");
+  // Adjusted:
+  console.log(
     "dataStorage: Checking if app data needs initialization (internal)."
   );
+
   const keysToInitialize = Object.keys(initialData);
 
   for (const key of keysToInitialize) {
@@ -110,15 +125,21 @@ export const initializeAppData = async () => {
         existingData.length === 0 &&
         initialData[key].length > 0)
     ) {
-      (`dataStorage: Initializing data for key: ${key}`);
+      // Original: (`dataStorage: Initializing data for key: ${key}`);
+      // Adjusted:
+      console.log(`dataStorage: Initializing data for key: ${key}`);
       await saveData(key, initialData[key]);
     } else {
-      (
+      // Original: (`dataStorage: Data for key: ${key} already exists. Skipping initialization.`);
+      // Adjusted:
+      console.log(
         `dataStorage: Data for key: ${key} already exists. Skipping initialization.`
       );
     }
   }
-  ("dataStorage: App data initialization (internal) complete.");
+  // Original: ("dataStorage: App data initialization (internal) complete.");
+  // Adjusted:
+  console.log("dataStorage: App data initialization (internal) complete.");
 };
 
 // --- Transaction Functions ---
@@ -136,26 +157,26 @@ export const saveTransaction = async (transaction) => {
     // Load existing data
     const existingTransactions = await getTransactions();
     let currentPhysicalCash = await getPhysicalCash();
-    let floatEntries = await getFloatEntries();
-    let inventoryItems = await getGeneralInventoryItems();
+    let floatEntries = await getFloatEntries(); // This fetches the ARRAY of float entries
+    let inventoryItems = await getGeneralInventoryItems(); // This fetches the ARRAY of inventory items
     let commissionEarnings = await getCommissionEarnings();
 
     // Add timestamp and a unique ID
     const newTransaction = {
       ...transaction,
       timestamp: Date.now(),
-      id: uuid.v4(),
-    }; // Assuming you have uuid or similar for unique IDs
+      id: generateSimpleUniqueId(),
+    };
 
     // --- Core Logic for updating balances based on transaction type ---
     if (newTransaction.isMobileMoney) {
       const networkName = newTransaction.itemName; // 'itemName' holds the network name
       const mmAmount = newTransaction.amount; // 'amount' holds the transaction value
-      const commission = calculateCommission(
+      const commission = await calculateCommission(
         networkName,
         mmAmount,
         newTransaction.type
-      ); // Your commission logic
+      );
       newTransaction.commissionEarned = commission; // Attach commission to the transaction record
 
       if (newTransaction.type === "sell") {
@@ -171,7 +192,7 @@ export const saveTransaction = async (transaction) => {
       } else if (newTransaction.type === "restock") {
         // Mobile Money Deposit
         // Physical cash comes IN, Float goes OUT (digitally)
-        currentPhysicalCash += mmAmount; // Cash received from customer <--- THIS IS THE KEY LINE
+        currentPhysicalCash += mmAmount; // Cash received from customer
         floatEntries = floatEntries.map((entry) =>
           entry.itemName.toLowerCase() === networkName.toLowerCase()
             ? { ...entry, currentStock: entry.currentStock - mmAmount } // Float decreases
@@ -211,8 +232,14 @@ export const saveTransaction = async (transaction) => {
     // Save updated data
     await overwriteTransactions([...existingTransactions, newTransaction]); // Add new transaction to history
     await savePhysicalCash(currentPhysicalCash);
-    await saveFloatEntry(floatEntries); // Save all float entries (assuming saveFloatEntry can take an array)
-    await saveGeneralInventoryItem(inventoryItems); // Save all inventory items (assuming saveGeneralInventoryItem can take an array)
+
+    // --- CRITICAL FIX HERE ---
+    // You are saving the entire arrays, so use the generic saveData helper
+    // which correctly handles stringifying the array.
+    await saveData(MOBILE_MONEY_FLOAT_KEY, floatEntries); // <--- CORRECTED
+    await saveData(GENERAL_INVENTORY_KEY, inventoryItems); // <--- CORRECTED
+    // --- END FIX ---
+
     await saveCommissionEarnings(commissionEarnings);
 
     return true; // Indicate success
@@ -229,7 +256,9 @@ export async function overwriteTransactions(newTransactionList) {
       TRANSACTIONS_KEY,
       JSON.stringify(newTransactionList)
     );
-    ("dataStorage: Transactions successfully overwritten.");
+    // Original: ("dataStorage: Transactions successfully overwritten.");
+    // Adjusted:
+    console.log("dataStorage: Transactions successfully overwritten.");
   } catch (error) {
     console.error("dataStorage: Failed to overwrite transactions:", error);
     throw error;
@@ -297,14 +326,20 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
       throw new Error("Item name is required and must be a valid string.");
     }
 
-    (
+    // Original: (`--- saveGeneralInventoryItem: Processing "${itemToSave.itemName}" ---`);
+    // Adjusted:
+    console.log(
       `--- saveGeneralInventoryItem: Processing "${itemToSave.itemName}" ---`
     );
 
     let currentInventory = await getGeneralInventoryItems(); // (A) Get current array
-    (currentInventory);
+    // Original: (currentInventory);
+    // Adjusted:
+    // console.log("DEBUG: currentInventory fetched:", currentInventory); // This can be very verbose, use sparingly
 
-    (
+    // Original: (`DEBUG: (A) currentInventory BEFORE modification for "${itemToSave.itemName}":`, JSON.stringify(currentInventory.map((item) => item.itemName || "unknown")));
+    // Adjusted:
+    console.log(
       `DEBUG: (A) currentInventory BEFORE modification for "${itemToSave.itemName}":`,
       JSON.stringify(currentInventory.map((item) => item.itemName || "unknown"))
     );
@@ -324,7 +359,9 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
         item.itemName.toLowerCase() === itemToSave.itemName.toLowerCase()
     );
 
-    (
+    // Original: (`DEBUG: (B) existingItemIndex for "${itemToSave.itemName}":`, existingItemIndex);
+    // Adjusted:
+    console.log(
       `DEBUG: (B) existingItemIndex for "${itemToSave.itemName}":`,
       existingItemIndex
     );
@@ -361,13 +398,15 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
           [],
         lastUpdated: Date.now(),
       };
-      (
+      // Original: (`dataStorage: Updating existing general inventory item: ${itemToSave.itemName}`);
+      // Adjusted:
+      console.log(
         `dataStorage: Updating existing general inventory item: ${itemToSave.itemName}`
       );
     } else {
       // Add new item
       const newItem = {
-        id: itemToSave.id || Date.now().toString(),
+        id: itemToSave.id || generateSimpleUniqueId(), // Use generateSimpleUniqueId for new items
         itemName: itemToSave.itemName,
         currentStock: Number(itemToSave.currentStock) || 0,
         costPricePerUnit: Number(itemToSave.costPricePerUnit) || 0,
@@ -380,22 +419,30 @@ export const saveGeneralInventoryItem = async (itemToSave) => {
         lastUpdated: Date.now(),
       };
       currentInventory.push(newItem); // (C) Push new item to the array
-      (
+      // Original: (`dataStorage: Adding new general inventory item: ${newItem.itemName}`);
+      // Adjusted:
+      console.log(
         `dataStorage: Adding new general inventory item: ${newItem.itemName}`
       );
     }
 
-    (
+    // Original: (`DEBUG: (C) currentInventory AFTER modification for "${itemToSave.itemName}":`, JSON.stringify(currentInventory.map((item) => item.itemName || "unknown")));
+    // Adjusted:
+    console.log(
       `DEBUG: (C) currentInventory AFTER modification for "${itemToSave.itemName}":`,
       JSON.stringify(currentInventory.map((item) => item.itemName || "unknown"))
     );
 
     await saveData(GENERAL_INVENTORY_KEY, currentInventory); // (D) Save the *entire* updated array
-    (
+    // Original: (`DEBUG: (D) Successfully called saveData for "${itemToSave.itemName}". Current total items in array (at this point): ${currentInventory.length}`);
+    // Adjusted:
+    console.log(
       `DEBUG: (D) Successfully called saveData for "${itemToSave.itemName}". Current total items in array (at this point): ${currentInventory.length}`
     );
 
-    (
+    // Original: (`--- saveGeneralInventoryItem: Finished processing "${itemToSave.itemName}" ---`);
+    // Adjusted:
+    console.log(
       `--- saveGeneralInventoryItem: Finished processing "${itemToSave.itemName}" ---`
     );
     return true;
@@ -428,7 +475,9 @@ export const deleteGeneralInventoryItem = async (itemName) => {
     if (filteredInventory.length < currentInventory.length) {
       // Check if something was actually removed
       await saveData(GENERAL_INVENTORY_KEY, filteredInventory); // Save the filtered array
-      (`dataStorage: General inventory item '${itemName}' deleted.`);
+      // Original: (`dataStorage: General inventory item '${itemName}' deleted.`);
+      // Adjusted:
+      console.log(`dataStorage: General inventory item '${itemName}' deleted.`);
       return true;
     } else {
       console.warn(
@@ -487,10 +536,14 @@ export const saveFloatEntry = async (newFloat) => {
       );
     }
 
-    (`--- saveFloatEntry: Processing "${newFloat.itemName}" ---`);
+    // Original: (`--- saveFloatEntry: Processing "${newFloat.itemName}" ---`);
+    // Adjusted:
+    console.log(`--- saveFloatEntry: Processing "${newFloat.itemName}" ---`);
 
     let currentFloat = await getFloatEntries(); // (A) Get current array
-    (
+    // Original: (`DEBUG: (A) currentFloat BEFORE modification for "${newFloat.itemName}":`, JSON.stringify(currentFloat.map((item) => item.itemName || "unknown")));
+    // Adjusted:
+    console.log(
       `DEBUG: (A) currentFloat BEFORE modification for "${newFloat.itemName}":`,
       JSON.stringify(currentFloat.map((item) => item.itemName || "unknown"))
     );
@@ -510,7 +563,9 @@ export const saveFloatEntry = async (newFloat) => {
         entry.itemName.toLowerCase() === newFloat.itemName.toLowerCase()
     );
 
-    (
+    // Original: (`DEBUG: (B) existingFloatIndex for "${newFloat.itemName}":`, existingFloatIndex);
+    // Adjusted:
+    console.log(
       `DEBUG: (B) existingFloatIndex for "${newFloat.itemName}":`,
       existingFloatIndex
     );
@@ -530,13 +585,15 @@ export const saveFloatEntry = async (newFloat) => {
           [],
         lastUpdated: Date.now(),
       };
-      (
+      // Original: (`dataStorage: Updating existing float entry: ${newFloat.itemName}`);
+      // Adjusted:
+      console.log(
         `dataStorage: Updating existing float entry: ${newFloat.itemName}`
       );
     } else {
       // Add new entry
       const floatToPush = {
-        id: newFloat.id || Date.now().toString(),
+        id: newFloat.id || generateSimpleUniqueId(), // Use generateSimpleUniqueId for new items
         itemName: newFloat.itemName,
         currentStock: Number(newFloat.currentStock) || 0,
         costPricePerUnit: Number(newFloat.costPricePerUnit) || 0, // Keeping for structural consistency
@@ -550,20 +607,28 @@ export const saveFloatEntry = async (newFloat) => {
         lastUpdated: Date.now(),
       };
       currentFloat.push(floatToPush); // (C) Push new entry to the array
-      (`dataStorage: Adding new float entry: ${newFloat.itemName}`);
+      // Original: (`dataStorage: Adding new float entry: ${newFloat.itemName}`);
+      // Adjusted:
+      console.log(`dataStorage: Adding new float entry: ${newFloat.itemName}`);
     }
 
-    (
+    // Original: (`DEBUG: (C) currentFloat AFTER modification for "${newFloat.itemName}":`, JSON.stringify(currentFloat.map((item) => item.itemName || "unknown")));
+    // Adjusted:
+    console.log(
       `DEBUG: (C) currentFloat AFTER modification for "${newFloat.itemName}":`,
       JSON.stringify(currentFloat.map((item) => item.itemName || "unknown"))
     );
 
     await saveData(MOBILE_MONEY_FLOAT_KEY, currentFloat); // (D) Save the *entire* updated array
-    (
+    // Original: (`DEBUG: (D) Successfully called saveData for "${newFloat.itemName}". Current total entries in array (at this point): ${currentFloat.length}`);
+    // Adjusted:
+    console.log(
       `DEBUG: (D) Successfully called saveData for "${newFloat.itemName}". Current total entries in array (at this point): ${currentFloat.length}`
     );
 
-    (
+    // Original: (`--- saveFloatEntry: Finished processing "${newFloat.itemName}" ---`);
+    // Adjusted:
+    console.log(
       `--- saveFloatEntry: Finished processing "${newFloat.itemName}" ---`
     );
     return true;
@@ -594,7 +659,9 @@ export const deleteFloatEntry = async (itemName) => {
     if (filteredFloat.length < currentFloat.length) {
       // Check if something was actually removed
       await saveData(MOBILE_MONEY_FLOAT_KEY, filteredFloat); // Save the filtered array
-      (`dataStorage: Float entry '${itemName}' deleted.`);
+      // Original: (`dataStorage: Float entry '${itemName}' deleted.`);
+      // Adjusted:
+      console.log(`dataStorage: Float entry '${itemName}' deleted.`);
       return true;
     } else {
       console.warn(
@@ -620,17 +687,53 @@ export const clearFloatEntries = async () => {
 export const getPhysicalCash = async () => {
   try {
     const value = await AsyncStorage.getItem(PHYSICAL_CASH_KEY);
-    return value != null ? parseFloat(value) : initialData[PHYSICAL_CASH_KEY];
+    // Original: (initialData[PHYSICAL_CASH_KEY]) - causing issue, likely meant for console.log
+    // Adjusted:
+    console.log(
+      `DEBUG: getPhysicalCash - initialData[PHYSICAL_CASH_KEY] in catch block:`,
+      initialData[PHYSICAL_CASH_KEY]
+    );
+
+    // Added robust parsing/validation to prevent NaN, based on previous discussion
+    if (value === null || value === "") {
+      console.log(
+        `[getPhysicalCash] Value is null or empty string. Returning initialData[PHYSICAL_CASH_KEY] (${initialData[PHYSICAL_CASH_KEY]}).`
+      );
+      return initialData[PHYSICAL_CASH_KEY];
+    }
+    const parsedValue = parseFloat(value);
+    if (isNaN(parsedValue)) {
+      console.warn(
+        `[getPhysicalCash] Stored physical cash value "${value}" is not a valid number. Returning initial:`,
+        initialData[PHYSICAL_CASH_KEY]
+      );
+      return initialData[PHYSICAL_CASH_KEY];
+    }
+    return parsedValue;
   } catch (e) {
     console.error("dataStorage: Failed to fetch physical cash:", e);
-    (initialData[PHYSICAL_CASH_KEY])
+    // Original: (initialData[PHYSICAL_CASH_KEY]) - causing issue, likely meant for console.log
+    // Adjusted:
+    console.log(
+      `DEBUG: getPhysicalCash - Returning initialData[PHYSICAL_CASH_KEY] (${initialData[PHYSICAL_CASH_KEY]}) due to error.`
+    );
     return initialData[PHYSICAL_CASH_KEY];
   }
 };
 
 export const savePhysicalCash = async (amount) => {
   try {
-    const stringValue = String(Number(amount));
+    // Added validation for NaN before saving, based on previous discussion
+    const numericAmount = Number(amount);
+    if (isNaN(numericAmount)) {
+      console.error(
+        `[savePhysicalCash] Invalid amount provided to savePhysicalCash: "${amount}". Must be a number.`
+      );
+      throw new Error(
+        "Invalid amount provided to savePhysicalCash: Must be a number."
+      );
+    }
+    const stringValue = String(numericAmount);
     await AsyncStorage.setItem(PHYSICAL_CASH_KEY, stringValue);
     return true;
   } catch (e) {
@@ -689,7 +792,9 @@ export const clearCommissionEarnings = async () => {
 export const clearAllStorage = async () => {
   try {
     await AsyncStorage.clear();
-    ("dataStorage: All AsyncStorage data cleared successfully.");
+    // Original: ("dataStorage: All AsyncStorage data cleared successfully.");
+    // Adjusted:
+    console.log("dataStorage: All AsyncStorage data cleared successfully.");
     // After clearing all, re-initialize to set up default data
     // Note: If you use initializeShopData from initialization.js, you might
     // want to call that specifically here instead of initializeAppData().
@@ -720,7 +825,9 @@ const getBusinessStatus = async () => {
 const clearDailySummaryData = async () => {
   try {
     await AsyncStorage.removeItem("dailySummaryData");
-    ("Daily summary data cleared from storage.");
+    // Original: ("Daily summary data cleared from storage.");
+    // Adjusted:
+    console.log("Daily summary data cleared from storage.");
   } catch (error) {
     console.error("Error clearing daily summary data:", error);
   }
