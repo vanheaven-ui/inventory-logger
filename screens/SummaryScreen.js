@@ -18,14 +18,17 @@ import {
   setLastSummaryResetTimestamp,
   getLastSummaryResetTimestamp,
   saveDailySummaryData,
-  getDailySummaryData,
+  getDailySummaryData, // This will now be properly utilized
+  clearDailySummaryData, // NEW: function to clear saved summary
   getPhysicalCash,
   savePhysicalCash,
+  saveBusinessStatus,
+  getBusinessStatus,
 } from "../storage/dataStorage";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
 
 const IS_AGENT_KEY = "isMobileMoneyAgent";
-
 const DEFAULT_SUMMARY_STATE = {
   sellCount: 0,
   restockCount: 0,
@@ -56,6 +59,7 @@ export default function SummaryScreen({ navigation }) {
   const [hasCalculatedSummary, setHasCalculatedSummary] = useState(false);
   const [lastResetDateDisplay, setLastResetDateDisplay] = useState("");
   const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
+  const [businessStatus, setBusinessStatus] = useState("closed");
   const { t } = useLanguage();
 
   const formatCurrency = useCallback((amount) => {
@@ -70,7 +74,7 @@ export default function SummaryScreen({ navigation }) {
   }, []);
 
   const calculateAndSetSummary = useCallback(async (transactionsToProcess) => {
-    console.log(
+    (
       "calculateAndSetSummary called with",
       transactionsToProcess.length,
       "transactions."
@@ -81,7 +85,6 @@ export default function SummaryScreen({ navigation }) {
     let genTotalCostOfRestocks = 0;
     let genNumSalesTransactions = 0;
     let genNumRestockTransactions = 0;
-
     let mmSellCount = 0;
     let mmRestockCount = 0;
     let mmTotalTransactionValue = 0;
@@ -90,10 +93,12 @@ export default function SummaryScreen({ navigation }) {
     transactionsToProcess.forEach((transaction) => {
       if (transaction.isMobileMoneyAgent) {
         if (transaction.type === "sell") {
+          // Assuming 'sell' for MM means withdrawal, 'amount' is transaction value, 'commissionEarned' is agent commission
           mmSellCount++;
           mmTotalTransactionValue += transaction.amount || 0;
           mmTotalCommissionEarned += transaction.commissionEarned || 0;
         } else if (transaction.type === "restock") {
+          // Assuming 'restock' for MM means deposit, 'amount' is transaction value, 'commissionEarned' is agent commission
           mmRestockCount++;
           mmTotalTransactionValue += transaction.amount || 0;
           mmTotalCommissionEarned += transaction.commissionEarned || 0;
@@ -101,18 +106,18 @@ export default function SummaryScreen({ navigation }) {
       } else {
         if (transaction.type === "sell") {
           genSellCount += transaction.quantity || 0;
-          genTotalSalesRevenue += transaction.amount || 0;
+          genTotalSalesRevenue += transaction.amount || 0; // Assuming 'amount' is the selling price
           genNumSalesTransactions++;
         } else if (transaction.type === "restock") {
           genRestockCount += transaction.quantity || 0;
-          genTotalCostOfRestocks += transaction.amount || 0;
+          genTotalCostOfRestocks += transaction.amount || 0; // Assuming 'amount' is the cost price
           genNumRestockTransactions++;
         }
       }
     });
 
     const genNetProfitOrLoss = genTotalSalesRevenue - genTotalCostOfRestocks;
-    const mmNetProfitOrLoss = mmTotalCommissionEarned;
+    const mmNetProfitOrLoss = mmTotalCommissionEarned; // For MM, profit is primarily commission
     const combinedNetProfitOrLoss = genNetProfitOrLoss + mmNetProfitOrLoss;
 
     const newGeneralSummary = {
@@ -126,8 +131,8 @@ export default function SummaryScreen({ navigation }) {
     };
 
     const newMobileMoneySummary = {
-      sellCount: mmSellCount,
-      restockCount: mmRestockCount,
+      sellCount: mmSellCount, // Number of withdrawals
+      restockCount: mmRestockCount, // Number of deposits
       totalTransactionValue: mmTotalTransactionValue,
       totalCommissionEarned: mmTotalCommissionEarned,
       netProfitOrLoss: mmNetProfitOrLoss,
@@ -147,26 +152,33 @@ export default function SummaryScreen({ navigation }) {
       calculatedAt: Date.now(),
     };
 
+    // Save the newly calculated summary
     await saveDailySummaryData(savedData);
-    console.log(
+    (
       "SummaryScreen: Calculated and saved new combined summary:",
       savedData
     );
-
     return savedData;
   }, []);
 
   const loadData = useCallback(async () => {
-    console.log("SummaryScreen: Starting loadData...");
+    ("SummaryScreen: Starting loadData...");
     setLoading(true);
     try {
       const storedAgentStatus = await AsyncStorage.getItem(IS_AGENT_KEY);
       const agentStatus =
         storedAgentStatus !== null ? JSON.parse(storedAgentStatus) : false;
       setIsMobileMoneyAgent(agentStatus);
-      console.log("SummaryScreen: Loaded isMobileMoneyAgent:", agentStatus);
+      ("SummaryScreen: Loaded isMobileMoneyAgent:", agentStatus);
 
-      const savedSummaryData = await getDailySummaryData();
+      // Load business status
+      const storedBusinessStatus = await getBusinessStatus();
+      setBusinessStatus(storedBusinessStatus);
+      (
+        "SummaryScreen: Loaded businessStatus:",
+        storedBusinessStatus
+      );
+
       const lastResetTimestamp = await getLastSummaryResetTimestamp();
 
       if (lastResetTimestamp === 0) {
@@ -184,22 +196,30 @@ export default function SummaryScreen({ navigation }) {
         );
       }
 
+      // --- CRITICAL CHANGE HERE ---
+      const savedSummaryData = await getDailySummaryData();
+      (
+        "SummaryScreen: Loaded saved summary data:",
+        savedSummaryData
+      );
+
+      // Check if there's a saved summary and if it's from the current "open" period
       if (
         savedSummaryData &&
         savedSummaryData.generalSummary &&
-        savedSummaryData.mobileMoneySummary
+        savedSummaryData.mobileMoneySummary &&
+        savedSummaryData.calculatedAt >= lastResetTimestamp
       ) {
+        // If the saved summary is current, use it
         setGeneralSummary(savedSummaryData.generalSummary);
         setMobileMoneySummary(savedSummaryData.mobileMoneySummary);
         setOverallNetProfitOrLoss(savedSummaryData.overallNetProfitOrLoss || 0);
         setHasCalculatedSummary(true);
-        console.log(
-          "SummaryScreen: Loaded saved summary data.",
-          savedSummaryData
-        );
+        ("SummaryScreen: Displaying loaded summary data.");
       } else {
-        console.log(
-          "SummaryScreen: No saved summary data found or incomplete. Recalculating from transactions."
+        // If no saved summary, or it's outdated (new business day/session), recalculate from transactions
+        (
+          "SummaryScreen: Saved summary outdated or not found. Recalculating from transactions since last reset."
         );
         const allTransactions = await getTransactions();
         const transactionsSinceLastReset = allTransactions.filter(
@@ -210,12 +230,7 @@ export default function SummaryScreen({ navigation }) {
             return transactionTimestamp >= lastResetTimestamp;
           }
         );
-        console.log(
-          "SummaryScreen: Calculating from relevant transactions (count: " +
-            transactionsSinceLastReset.length +
-            ")."
-        );
-        await calculateAndSetSummary(transactionsSinceLastReset);
+        await calculateAndSetSummary(transactionsSinceLastReset); // This will also save the new calculation
       }
     } catch (error) {
       console.error("SummaryScreen: Error loading summary data:", error);
@@ -223,26 +238,62 @@ export default function SummaryScreen({ navigation }) {
         type: "error",
         text1: t("error_loading_summary"),
       });
+      // Reset to defaults on error
       setGeneralSummary(DEFAULT_SUMMARY_STATE);
       setMobileMoneySummary(DEFAULT_MOBILE_MONEY_SUMMARY_STATE);
       setOverallNetProfitOrLoss(0);
       setHasCalculatedSummary(false);
     } finally {
       setLoading(false);
-      console.log("SummaryScreen: Finished loadData.");
+      ("SummaryScreen: Finished loadData.");
     }
   }, [t, calculateAndSetSummary]);
 
-  useEffect(() => {
-    const unsubscribe = navigation.addListener("focus", () => {
-      console.log("SummaryScreen: Focused. Loading data...");
-      loadData();
-    });
-    return unsubscribe;
-  }, [navigation, loadData]);
+  const handleOpenBusiness = async () => {
+    Alert.alert(
+      t("confirm_open_business_title"),
+      t("confirm_open_business_message"),
+      [
+        {
+          text: t("cancel"),
+          style: "cancel",
+        },
+        {
+          text: t("open"),
+          onPress: async () => {
+            ("Opening business...");
+            setLoading(true);
+            try {
+              const now = Date.now();
+              await setLastSummaryResetTimestamp(now);
+              await saveBusinessStatus("open");
+              setBusinessStatus("open");
 
-  const handleCloseBusiness = () => {
-    console.log("SummaryScreen: Initiating Close Business process.");
+              // Clear the previously saved daily summary so we start fresh for the new period
+              await clearDailySummaryData();
+              // And then immediately calculate an empty one for display
+              await calculateAndSetSummary([]);
+
+              Toast.show({
+                type: "success",
+                text1: t("business_opened_success"),
+              });
+            } catch (error) {
+              console.error("Error opening business:", error);
+              Toast.show({
+                type: "error",
+                text1: t("business_open_error"),
+              });
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCloseBusiness = async () => {
     Alert.alert(
       t("confirm_close_business_title"),
       t("confirm_close_business_message"),
@@ -250,20 +301,16 @@ export default function SummaryScreen({ navigation }) {
         {
           text: t("cancel"),
           style: "cancel",
-          onPress: () => {
-            console.log("Close Business cancelled.");
-            Toast.show({ type: "info", text1: t("close_business_cancelled") });
-          },
         },
         {
-          text: t("close_business_button"),
-          style: "destructive",
+          text: t("close"),
           onPress: async () => {
+            ("Closing business...");
             setLoading(true);
+
             try {
               const storedTransactions = await getTransactions();
               const transactionsData = storedTransactions || [];
-
               const lastResetTimestamp = await getLastSummaryResetTimestamp();
 
               const relevantTransactions = transactionsData.filter(
@@ -274,54 +321,54 @@ export default function SummaryScreen({ navigation }) {
                   return transactionTimestamp >= lastResetTimestamp;
                 }
               );
-              console.log(
-                "SummaryScreen (Close Business): Relevant transactions count for calculation:",
-                relevantTransactions.length
-              );
 
+              // Calculate and save the final summary for the day/session
               const calculatedSummary = await calculateAndSetSummary(
                 relevantTransactions
               );
-              console.log(
-                "SummaryScreen (Close Business): Summary calculated for closing period."
-              );
 
+              // Update physical cash (if applicable) based on the net profit/loss
               let currentPhysicalCash = await getPhysicalCash();
-              const profitLossForPeriod =
-                calculatedSummary.overallNetProfitOrLoss;
-              currentPhysicalCash += profitLossForPeriod;
-
+              currentPhysicalCash += calculatedSummary.overallNetProfitOrLoss;
               await savePhysicalCash(currentPhysicalCash);
-              console.log(
-                "SummaryScreen: Physical cash updated to:",
-                currentPhysicalCash
-              );
+              ("Updated Physical Cash:", currentPhysicalCash);
 
-              await setLastSummaryResetTimestamp(Date.now());
-              console.log(
-                "SummaryScreen (Close Business): New summary reset timestamp set to now. New period begins."
-              );
+              await saveBusinessStatus("closed");
+              setBusinessStatus("closed");
 
               Toast.show({
                 type: "success",
-                text1: t("close_business_success"),
+                text1: t("business_closed_success"),
               });
             } catch (error) {
-              console.error(
-                "SummaryScreen: Error during Close Business process:",
-                error
-              );
+              console.error("Error closing business:", error);
               Toast.show({ type: "error", text1: t("close_business_error") });
             } finally {
               setLoading(false);
-              console.log("SummaryScreen: Finished Close Business process.");
             }
           },
         },
-      ],
-      { cancelable: true }
+      ]
     );
   };
+
+  // The resetSummaries function is now primarily for client-side state reset
+  // and doesn't directly impact the stored daily summary.
+  const resetSummaries = () => {
+    setGeneralSummary(DEFAULT_SUMMARY_STATE);
+    setMobileMoneySummary(DEFAULT_MOBILE_MONEY_SUMMARY_STATE);
+    setOverallNetProfitOrLoss(0);
+    setHasCalculatedSummary(true);
+    setLastResetDateDisplay(t("since_app_start"));
+  };
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener("focus", () => {
+      ("SummaryScreen: Focused. Loading data...");
+      loadData();
+    });
+    return unsubscribe;
+  }, [navigation, loadData]);
 
   const renderValueCard = (label, amount, isProfitLoss = false) => (
     <View
@@ -338,10 +385,47 @@ export default function SummaryScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <FocusAwareStatusBar
+        backgroundColor="#17a2b8"
+        barStyle="light-content"
+        animated={true}
+      />
+
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t("todays_summary")}</Text>
         <Text style={styles.lastResetText}>{lastResetDateDisplay}</Text>
       </View>
+
+      <View style={styles.businessStatusContainer}>
+        <Text style={styles.statusTitle}>{t("business_status")}</Text>
+        <Text style={[styles.statusText, styles[`status_${businessStatus}`]]}>
+          {t(`business_${businessStatus}`)}
+        </Text>
+
+        <TouchableOpacity
+          style={[
+            styles.businessButton,
+            businessStatus === "closed"
+              ? styles.button_open
+              : styles.button_close,
+          ]}
+          onPress={
+            businessStatus === "closed"
+              ? handleOpenBusiness
+              : handleCloseBusiness
+          }
+          disabled={loading}
+        >
+          <Text style={styles.buttonText}>
+            {t(
+              businessStatus === "closed"
+                ? "open_business_button"
+                : "close_business_button"
+            )}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView
         style={styles.scrollViewContent}
         contentContainerStyle={styles.scrollViewContainer}
@@ -360,7 +444,7 @@ export default function SummaryScreen({ navigation }) {
                 <Text style={styles.noDataText}>{t("no_summary_data")}</Text>
               ) : (
                 <>
-                  {isMobileMoneyAgent && (
+                  {isMobileMoneyAgent ? (
                     <>
                       <Text style={styles.sectionTitle}>
                         {t("mobile_money_summary_title")}
@@ -380,9 +464,7 @@ export default function SummaryScreen({ navigation }) {
                       )}
                       <View style={styles.divider} />
                     </>
-                  )}
-
-                  {!isMobileMoneyAgent && (
+                  ) : (
                     <>
                       <Text style={styles.sectionTitle}>
                         {t("general_shop_summary_title")}
@@ -414,16 +496,6 @@ export default function SummaryScreen({ navigation }) {
                   )}
                 </>
               )}
-
-              <TouchableOpacity
-                style={styles.closeBusinessButton}
-                onPress={handleCloseBusiness}
-                disabled={loading}
-              >
-                <Text style={styles.closeBusinessButtonText}>
-                  {t("close_business")}
-                </Text>
-              </TouchableOpacity>
             </>
           )}
         </View>
@@ -436,8 +508,7 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: "#eef2f5",
-    // Remove paddingTop here or set to 0
-    paddingTop: 0, // This removes the top padding from SafeAreaView
+    paddingTop: 0,
   },
   header: {
     backgroundColor: "#17a2b8",
@@ -454,6 +525,7 @@ const styles = StyleSheet.create({
     elevation: 8,
     flexDirection: "column",
     position: "relative",
+    paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 10 : 20,
   },
   headerTitle: {
     fontSize: 26,
@@ -539,23 +611,60 @@ const styles = StyleSheet.create({
     marginVertical: 35,
     borderRadius: 0.75,
   },
-  closeBusinessButton: {
-    backgroundColor: "#28a745",
-    paddingVertical: 18,
+  businessStatusContainer: {
+    backgroundColor: "#fff",
+    borderRadius: 18,
+    padding: 22,
+    marginVertical: 10,
+    width: "95%",
+    alignItems: "center",
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    alignSelf: "center",
+  },
+  statusTitle: {
+    fontSize: 16,
+    color: "#666",
+    marginBottom: 5,
+  },
+  statusText: {
+    fontSize: 24,
+    fontWeight: "bold",
+    marginBottom: 15,
+  },
+  status_open: {
+    color: "#28a745",
+  },
+  status_closed: {
+    color: "#dc3545",
+  },
+  businessButton: {
+    backgroundColor: "#fff",
     borderRadius: 12,
+    paddingVertical: 18,
+    paddingHorizontal: 30,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 40,
-    marginBottom: 60,
-    width: "95%",
+    marginTop: 15,
     elevation: 5,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 5,
   },
-  closeBusinessButtonText: {
-    color: "#fff",
+  button_open: {
+    borderWidth: 2,
+    borderColor: "#28a745",
+  },
+  button_close: {
+    borderWidth: 2,
+    borderColor: "#dc3545",
+  },
+  buttonText: {
+    color: "#000",
     fontSize: 20,
     fontWeight: "bold",
   },

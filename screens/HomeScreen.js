@@ -1,4 +1,3 @@
-// screens/HomeScreen.js
 import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
@@ -10,12 +9,14 @@ import {
   SafeAreaView,
   Switch,
   Platform,
-  StatusBar, // Import StatusBar for Android specific padding
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LanguageContext";
+import { useLanguage } from "../context/LanguageContext"; // Adjust path as needed
 import { FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Import the FocusAwareStatusBar component
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; // Adjust path based on your project structure
 
 // Key for AsyncStorage
 const IS_AGENT_KEY = "isMobileMoneyAgent";
@@ -35,7 +36,7 @@ const Colors = {
   textLight: "#555", // Lighter text
   background: "#eef2f5", // Light background
   cardBackground: "#fff", // White for cards
-  grayLight: "#dee2e6", // Very light gray
+  grayLight: "#dee2e6", // Very light gray (we will use this for the header background)
   grayMedium: "#adb5bd", // Medium gray
   white: "#ffffff",
 };
@@ -96,12 +97,18 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Use FocusAwareStatusBar here */}
+      <FocusAwareStatusBar
+        backgroundColor={Colors.grayLight}
+        barStyle="dark-content"
+      />
+
       <View
         style={[
           styles.fixedHeaderContainer,
-          Platform.OS === "android" && {
-            paddingTop: StatusBar.currentHeight + 10,
-          },
+          // Removed original Android paddingTop logic as SafeAreaView generally handles it
+          // or you can explicitly add padding top to fixedHeaderContainer if needed
+          // to push content below the status bar on Android.
         ]}
       >
         <View style={styles.appTitleContainerExt}>
@@ -219,7 +226,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.background,
   },
   fixedHeaderContainer: {
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.grayLight,
     paddingBottom: 10,
     shadowColor: Colors.darkGray,
     shadowOffset: {
@@ -230,10 +237,10 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 5,
     zIndex: 1,
-    // Add conditional padding for iOS to push content down from the notch area
-    // SafeAreaView usually handles this, but explicit padding can fine-tune
-    // For Android, we add StatusBar.currentHeight in the component itself
-    paddingTop: Platform.OS === "ios" ? 0 : 0, // SafeAreaView already provides this on iOS
+    // paddingTop is controlled by SafeAreaView for iOS or implicitly handled.
+    // Explicit padding for Android could be added here if not using SafeAreaView
+    // or if specific header height is desired.
+    paddingTop: Platform.OS === "ios" ? 0 : 0, // You might adjust this based on design needs
   },
   scrollView: {
     flex: 1,
@@ -249,16 +256,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     marginBottom: 0,
-    marginTop: 0, // Reduced to decrease overall height
+    marginTop: 0,
     paddingHorizontal: 20,
-    height: 70, // Fixed height for header container to control size
+    height: 70,
   },
   heading: {
-    fontSize: 26, // Reduced font size
+    fontSize: 26,
     fontWeight: "800",
     textAlign: "center",
     color: Colors.textDark,
-    marginRight: 10, // Reduced margin
+    marginRight: 10,
   },
   greetingIcon: {
     marginHorizontal: 5,
@@ -266,8 +273,8 @@ const styles = StyleSheet.create({
   logoContainer: {
     backgroundColor: Colors.success,
     width: 50,
-    height: 50, 
-    borderRadius: 25, // Adjusted borderRadius for smaller size
+    height: 50,
+    borderRadius: 25,
     justifyContent: "center",
     alignItems: "center",
     shadowColor: Colors.darkGray,

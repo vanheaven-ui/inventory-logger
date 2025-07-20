@@ -1,4 +1,9 @@
-import React, { useState, useCallback } from "react";
+import React, {
+  useState,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+} from "react";
 import {
   View,
   Text,
@@ -19,8 +24,9 @@ import {
   useRoute,
 } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons"; // For mic icon
 import Toast from "react-native-toast-message";
-import { useLanguage } from "../context/LanguageContext";
+import { useLanguage } from "../context/LanguageContext"; // Your LanguageContext
 import {
   getFloatEntries,
   saveFloatEntry,
@@ -28,37 +34,146 @@ import {
   deleteFloatEntry,
   getPhysicalCash,
   savePhysicalCash,
-  // NEW: Import the MIN_PHYSICAL_CASH_REQUIRED for display purposes
   MIN_PHYSICAL_CASH_REQUIRED,
-  // MIN_FLOAT_REQUIRED_PER_NETWORK, // You might want to import this if you plan to display it
   // clearAllStorage // <-- For testing purposes, uncomment if needed
 } from "../storage/dataStorage";
+
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
+import useVoiceRecognition from "../hooks/useVoiceRecognition";
 
 export default function ManageFloatScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage(); // Get language from context
 
-  const [floatEntries, setFloatEntries] = useState([]); // This will be for E-Value/Mobile Money floats
-  const [totalPhysicalCash, setTotalPhysicalCash] = useState(0); // Dedicated state for physical cash
-  const [totalEValueFloat, setTotalEValueFloat] = useState(0); // Calculated total for mobile money floats
+  // Voice Recognition Hook
+  const {
+    recognizedText,
+    partialResults,
+    isListening,
+    error: voiceError,
+    startListening,
+    stopListening,
+    cancelListening,
+    setRecognizedText,
+  } = useVoiceRecognition();
+
+  const [floatEntries, setFloatEntries] = useState([]); // E-Value/Mobile Money floats
+  const [totalPhysicalCash, setTotalPhysicalCash] = useState(0);
+  const [totalEValueFloat, setTotalEValueFloat] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [isModalVisible, setIsModalVisible] = useState(false); // For adding/editing E-Value floats
-
-  // State for the dedicated physical cash input modal
   const [isPhysicalCashModalVisible, setIsPhysicalCashModalVisible] =
     useState(false);
-  const [physicalCashInput, setPhysicalCashInput] = useState("");
 
   const [currentItem, setCurrentItem] = useState(null); // Null for new, object for edit E-Value float
-
-  // Form states for general E-Value float modal
   const [networkName, setNetworkName] = useState("");
   const [currentFloatAmount, setCurrentFloatAmount] = useState("");
+  const [physicalCashInput, setPhysicalCashInput] = useState("");
 
-  // This effect runs when navigating from TransactionForm to pre-fill network name
-  // This is specifically for E-Value floats now.
+  const [activeInput, setActiveInput] = useState(null);
+
+  // Use a ref to store the locale for speech recognition
+  const speechRecognizerLocale = React.useRef(language);
+
+  // Update locale ref if language changes
+  useEffect(() => {
+    speechRecognizerLocale.current = language;
+  }, [language]);
+
+  // --- Header Configuration with React Navigation ---
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: t("manage_float"),
+      headerShown: true,
+      headerStyle: {
+        backgroundColor: "#ffc107", // Matching your previous custom header's color
+      },
+      headerTintColor: "#fff", // White color for title and back arrow
+      headerBackTitleVisible: false,
+      headerRight: () => (
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => handleAddEditFloat()}
+        >
+          <Ionicons name="add-circle" size={30} color="#fff" />
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation, t]);
+
+  // Effect to apply recognized text to the active input field
+  useEffect(() => {
+    if (recognizedText && activeInput) {
+      if (activeInput === "networkName") {
+        setNetworkName(recognizedText);
+      } else if (activeInput === "currentFloatAmount") {
+        // Attempt to parse number, but voice recognition for numbers can be tricky
+        const parsed = parseFloat(recognizedText.replace(/,/g, "")); // Remove commas before parsing
+        if (!isNaN(parsed)) {
+          setCurrentFloatAmount(String(parsed));
+        } else {
+          Toast.show({
+            type: "info",
+            text1: t("voice_input_note"),
+            text2: t("could_not_parse_number", { text: recognizedText }),
+          });
+        }
+      } else if (activeInput === "physicalCashInput") {
+        // Attempt to parse number for physical cash
+        const parsed = parseFloat(recognizedText.replace(/,/g, ""));
+        if (!isNaN(parsed)) {
+          setPhysicalCashInput(String(parsed));
+        } else {
+          Toast.show({
+            type: "info",
+            text1: t("voice_input_note"),
+            text2: t("could_not_parse_number", { text: recognizedText }),
+          });
+        }
+      }
+      setRecognizedText(""); // Clear the recognized text after applying it
+      stopListening(); // Stop listening after applying text
+      setActiveInput(null); // Clear active input
+    }
+    // If listening stops for any reason (user stops, error), clear active input
+    if (!isListening && activeInput) {
+      setActiveInput(null);
+    }
+  }, [
+    recognizedText,
+    activeInput,
+    isListening,
+    setRecognizedText,
+    stopListening,
+    t,
+  ]);
+
+  // Effect to show voice recognition errors
+  useEffect(() => {
+    if (voiceError) {
+      Toast.show({
+        type: "error",
+        text1: t("voice_input_error"),
+        text2: voiceError,
+      });
+      // Consider adding a way to clear voiceError state in the hook if needed
+    }
+  }, [voiceError, t]);
+
+  // Handle microphone button press
+  const handleMicPress = (inputField) => {
+    if (isListening && activeInput === inputField) {
+      cancelListening(); // Stop listening if already active for this field
+      setActiveInput(null);
+    } else {
+      cancelListening(); // Cancel any existing listening session
+      setActiveInput(inputField);
+      startListening(speechRecognizerLocale.current); // Pass the current locale to the hook
+    }
+  };
+
   React.useEffect(() => {
     if (route.params?.item?.itemName) {
       setNetworkName(route.params.item.itemName);
@@ -75,49 +190,34 @@ export default function ManageFloatScreen() {
   const loadAllFloatData = useCallback(async () => {
     setLoading(true);
     try {
-      // Load E-Value Float Entries
       const storedEntries = await getFloatEntries();
       setFloatEntries(storedEntries || []);
 
-      // Calculate Total E-Value Float
       const calculatedEValueFloat = storedEntries.reduce(
         (sum, entry) => sum + (entry.currentStock || 0),
         0
       );
       setTotalEValueFloat(calculatedEValueFloat);
-      console.log(
-        "ManageFloatScreen: Loaded E-Value float entries:",
-        storedEntries
-      );
 
-      // Load Physical Cash
       const storedPhysicalCash = await getPhysicalCash();
       setTotalPhysicalCash(storedPhysicalCash);
-      console.log(
-        "ManageFloatScreen: Loaded Physical Cash:",
-        storedPhysicalCash
-      );
 
-      // --- MODIFIED LOGIC FOR PHYSICAL CASH ---
-      // Show modal if physical cash is zero or below the minimum required
       if (storedPhysicalCash < MIN_PHYSICAL_CASH_REQUIRED) {
         setIsPhysicalCashModalVisible(true);
-        // Pre-fill input if there's some cash, otherwise keep it empty for new entry
         setPhysicalCashInput(
           storedPhysicalCash > 0 ? storedPhysicalCash.toString() : ""
         );
         Toast.show({
           type: "info",
-          text1: t("physical_cash_low_title"), // New translation key
+          text1: t("physical_cash_low_title"),
           text2: t("physical_cash_low_message", {
             minCash: MIN_PHYSICAL_CASH_REQUIRED.toLocaleString(),
-          }), // New translation key
+          }),
           visibilityTime: 6000,
         });
       } else {
-        setIsPhysicalCashModalVisible(false); // Ensure modal is closed if cash meets requirement
+        setIsPhysicalCashModalVisible(false);
       }
-      // --- END MODIFIED LOGIC ---
     } catch (error) {
       console.error("ManageFloatScreen: Error loading all float data:", error);
       Toast.show({
@@ -127,17 +227,17 @@ export default function ManageFloatScreen() {
     } finally {
       setLoading(false);
     }
-  }, [t]); // Added t as a dependency for useCallback
+  }, [t]);
 
   useFocusEffect(
     useCallback(() => {
-      // Uncomment for testing to clear all data
-      // clearAllStorage();
+      // clearAllStorage(); // Uncomment for testing to clear all data
       loadAllFloatData();
       return () => {
         // Optional cleanup
+        cancelListening(); // Ensure listening is stopped when leaving the screen
       };
-    }, [loadAllFloatData])
+    }, [loadAllFloatData, cancelListening])
   );
 
   // --- Handlers for E-Value (Mobile Money) Floats ---
@@ -291,17 +391,37 @@ export default function ManageFloatScreen() {
     </View>
   );
 
+  // Helper to render voice input button with text
+  const renderVoiceInputButtonWithText = (fieldKey, placeholderTextKey) => (
+    <TouchableOpacity
+      style={[
+        styles.micButton,
+        isListening && activeInput === fieldKey && styles.micButtonActive,
+      ]}
+      onPress={() => handleMicPress(fieldKey)}
+    >
+      {isListening && activeInput === fieldKey ? (
+        <ActivityIndicator size="small" color="red" />
+      ) : (
+        <Icon name="microphone-outline" size={24} color="#666" />
+      )}
+      <Text style={styles.micButtonText}>
+        {isListening && activeInput === fieldKey
+          ? t("listening")
+          : t(placeholderTextKey)}
+      </Text>
+    </TouchableOpacity>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>{t("manage_float")}</Text>
-        <TouchableOpacity
-          style={styles.addButton}
-          onPress={() => handleAddEditFloat()}
-        >
-          <Ionicons name="add-circle" size={30} color="#fff" />
-        </TouchableOpacity>
-      </View>
+      {/* FocusAwareStatusBar */}
+      <FocusAwareStatusBar
+        backgroundColor="#ffc107" // Matching React Navigation header background
+        barStyle="light-content" // Changed to light-content for better contrast with a light background header
+        animated={true}
+      />
+
       <View style={styles.container}>
         {/* Display Total Values */}
         <View style={styles.totalValueContainer}>
@@ -312,7 +432,6 @@ export default function ManageFloatScreen() {
             <Text style={styles.totalValueText}>
               UGX {totalPhysicalCash.toLocaleString()}
             </Text>
-            {/* Display warning if physical cash is below minimum */}
             {totalPhysicalCash < MIN_PHYSICAL_CASH_REQUIRED && (
               <Text style={styles.warningText}>
                 {t("below_minimum_cash", {
@@ -341,7 +460,7 @@ export default function ManageFloatScreen() {
           </View>
         </View>
 
-        {loading ? (
+        {loading || isListening ? ( // Combine loading and listening for ActivityIndicator
           <ActivityIndicator
             size="large"
             color="#007bff"
@@ -352,7 +471,7 @@ export default function ManageFloatScreen() {
         ) : (
           <FlatList
             data={floatEntries}
-            keyExtractor={(item) => item.itemName} // Using itemName as key, assuming it's unique
+            keyExtractor={(item) => item.itemName}
             renderItem={renderFloatItem}
             contentContainerStyle={styles.listContent}
           />
@@ -364,7 +483,10 @@ export default function ManageFloatScreen() {
         visible={isModalVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setIsModalVisible(false)}
+        onRequestClose={() => {
+          setIsModalVisible(false);
+          cancelListening(); // Stop listening if modal is closed
+        }}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -374,26 +496,55 @@ export default function ManageFloatScreen() {
             <Text style={styles.modalTitle}>
               {currentItem ? t("edit_e_value_float") : t("add_e_value_float")}
             </Text>
+
             <Text style={styles.label}>{t("network_name")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("enter_network_name")}
-              value={networkName}
-              onChangeText={setNetworkName}
-              editable={!currentItem} // Prevent editing network name if editing existing float
-            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder={t("enter_network_name")}
+                value={networkName}
+                onChangeText={setNetworkName}
+                editable={!currentItem} // Prevent editing network name if editing existing float
+                onFocus={() => setActiveInput("networkName")}
+                onBlur={() => setActiveInput(null)}
+              />
+              {renderVoiceInputButtonWithText(
+                "networkName",
+                "speak_network_name"
+              )}
+            </View>
+
             <Text style={styles.label}>{t("current_float_amount")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("enter_current_float_amount")}
-              keyboardType="numeric"
-              value={currentFloatAmount}
-              onChangeText={setCurrentFloatAmount}
-            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder={t("enter_current_float_amount")}
+                keyboardType="numeric"
+                value={currentFloatAmount}
+                onChangeText={setCurrentFloatAmount}
+                onFocus={() => setActiveInput("currentFloatAmount")}
+                onBlur={() => setActiveInput(null)}
+              />
+              {renderVoiceInputButtonWithText(
+                "currentFloatAmount",
+                "speak_amount"
+              )}
+            </View>
+
+            {/* Partial results for modal inputs */}
+            {isListening && partialResults.length > 0 && activeInput && (
+              <Text style={styles.partialText}>
+                {t("listening")} {partialResults[0]}...
+              </Text>
+            )}
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setIsModalVisible(false)}
+                onPress={() => {
+                  setIsModalVisible(false);
+                  cancelListening();
+                }}
               >
                 <Text style={styles.buttonText}>{t("cancel")}</Text>
               </TouchableOpacity>
@@ -413,7 +564,10 @@ export default function ManageFloatScreen() {
         visible={isPhysicalCashModalVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setIsPhysicalCashModalVisible(false)}
+        onRequestClose={() => {
+          setIsPhysicalCashModalVisible(false);
+          cancelListening(); // Stop listening if modal is closed
+        }}
       >
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : "height"}
@@ -422,17 +576,38 @@ export default function ManageFloatScreen() {
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>{t("set_physical_cash")}</Text>
             <Text style={styles.label}>{t("current_physical_cash")}</Text>
-            <TextInput
-              style={styles.input}
-              placeholder={t("enter_physical_cash_amount")}
-              keyboardType="numeric"
-              value={physicalCashInput}
-              onChangeText={setPhysicalCashInput}
-            />
+            <View style={styles.inputContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder={t("enter_physical_cash_amount")}
+                keyboardType="numeric"
+                value={physicalCashInput}
+                onChangeText={setPhysicalCashInput}
+                onFocus={() => setActiveInput("physicalCashInput")}
+                onBlur={() => setActiveInput(null)}
+              />
+              {renderVoiceInputButtonWithText(
+                "physicalCashInput",
+                "speak_amount"
+              )}
+            </View>
+
+            {/* Partial results for modal inputs */}
+            {isListening &&
+              partialResults.length > 0 &&
+              activeInput === "physicalCashInput" && (
+                <Text style={styles.partialText}>
+                  {t("listening")} {partialResults[0]}...
+                </Text>
+              )}
+
             <View style={styles.modalButtons}>
               <TouchableOpacity
                 style={[styles.modalButton, styles.cancelButton]}
-                onPress={() => setIsPhysicalCashModalVisible(false)}
+                onPress={() => {
+                  setIsPhysicalCashModalVisible(false);
+                  cancelListening();
+                }}
               >
                 <Text style={styles.buttonText}>{t("cancel")}</Text>
               </TouchableOpacity>
@@ -455,28 +630,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#f6f6f6",
   },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    backgroundColor: "#ffc107",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0a800",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: "600",
-    color: "#fff",
-  },
   addButton: {
+    // Keep this style as it's used by headerRight
     padding: 5,
+    marginLeft: 10,
   },
   container: {
     flex: 1,
@@ -621,7 +778,13 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "500",
   },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+  },
   input: {
+    flex: 1, // Allows TextInput to take up remaining space
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 8,
@@ -629,8 +792,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    marginBottom: 15,
     backgroundColor: "#fcfcfc",
+    marginRight: 10, // Space between input and mic button
+  },
+  micButton: {
+    flexDirection: "row", // Arrange icon and text horizontally
+    alignItems: "center",
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: "#e0e0e0", // Light grey for inactive mic
+    justifyContent: "center",
+    gap: 5, // Space between icon and text
+  },
+  micButtonActive: {
+    backgroundColor: "#ffe0e0", // Light red for active mic
+  },
+  micButtonText: {
+    color: "#666", // Default text color
+    fontSize: 12,
+  },
+  partialText: {
+    fontSize: 14,
+    color: "#007bff",
+    textAlign: "center",
+    marginBottom: 10,
+    marginTop: -10, // Pull up slightly closer to input
   },
   modalButtons: {
     flexDirection: "row",

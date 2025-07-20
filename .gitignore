@@ -39,3 +39,8 @@ yarn-error.*
 # Keystore files
 *.keystore
 *.jks
+
+# other files
+keystore.base64
+my-upload-key.keystore
+

@@ -1,4 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useLayoutEffect,
+} from "react";
 import {
   View,
   Text,
@@ -8,22 +13,37 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
-  Alert,
+  ScrollView,
 } from "react-native";
-import { useNavigation, useRoute } from "@react-navigation/native";
-import Toast from "react-native-toast-message";
-import { useLanguage } from "../context/LanguageContext"; // Assuming you have this
 import {
-  saveInventoryItem, // This function should save/update GENERAL inventory items
-  // getGeneralInventoryItems, // Not directly used in this component, but good to keep in mind
-} from "../storage/dataStorage"; // Ensure saveInventoryItem is exported
+  useNavigation,
+  useRoute,
+  useFocusEffect,
+} from "@react-navigation/native";
+import Toast from "react-native-toast-message";
+import { useLanguage } from "../context/LanguageContext";
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
+import useVoiceRecognition from "../hooks/useVoiceRecognition";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import { saveInventoryItem } from "../storage/dataStorage";
 
 export default function ManageItemScreen() {
   const navigation = useNavigation();
   const route = useRoute();
-  const { t } = useLanguage(); // For translations
+  const { t, language } = useLanguage(); // Get language from context
 
-  // Get parameters passed from the previous screen
+  // Voice Recognition Hook
+  const {
+    recognizedText,
+    partialResults,
+    isListening,
+    error: voiceError,
+    startListening,
+    stopListening,
+    cancelListening,
+    setRecognizedText,
+  } = useVoiceRecognition();
+
   const {
     itemName: passedItemName,
     isNewItem: isRedirectedNewItem,
@@ -31,39 +51,123 @@ export default function ManageItemScreen() {
   } = route.params || {};
 
   const [itemName, setItemName] = useState("");
-  const [currentStock, setCurrentStock] = useState("0"); // Default to 0 for new items
-  const [costPricePerUnit, setCostPricePerUnit] = useState("0"); // Default to 0 for new items
-  const [sellingPricePerUnit, setSellingPricePerUnit] = useState("0"); // Default to 0 for new items
-  const [loading, setLoading] = useState(false);
-  const [isEditing, setIsEditing] = useState(false); // State to distinguish add vs. edit
+  // Renamed currentStock to stockQuantity
+  const [stockQuantity, setStockQuantity] = useState("0");
+  const [costPricePerUnit, setCostPricePerUnit] = useState("0");
+  const [sellingPricePerUnit, setSellingPricePerUnit] = useState("0");
+  // Removed unit, category, description states
 
-  // Effect to handle pre-population and edit mode
+  const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [activeInput, setActiveInput] = useState(null);
+
+  // Use a ref to store the locale for speech recognition
+  const speechRecognizerLocale = React.useRef(language);
+
+  // Update locale ref if language changes
+  useEffect(() => {
+    speechRecognizerLocale.current = language;
+  }, [language]);
+
   useEffect(() => {
     if (itemToEdit) {
-      // If an item object is passed for editing
       setIsEditing(true);
-      setItemName(itemToEdit.itemName);
-      setCurrentStock(String(itemToEdit.currentStock));
-      setCostPricePerUnit(String(itemToEdit.costPricePerUnit));
-      setSellingPricePerUnit(String(itemToEdit.sellingPricePerUnit));
-      // You might also store originalItemName for renames if your save function needs it
+      setItemName(itemToEdit.itemName || "");
+      // Update from currentStock to stockQuantity
+      setStockQuantity(String(itemToEdit.currentStock || 0));
+      setCostPricePerUnit(String(itemToEdit.costPricePerUnit || 0));
+      setSellingPricePerUnit(String(itemToEdit.sellingPricePerUnit || 0));
+      // Removed unit, category, description population
     } else if (isRedirectedNewItem && passedItemName) {
-      // If redirected from TransactionForm to add a new item
-      setItemName(passedItemName); // Pre-populate the item name
-      // Keep default stock/prices as 0, as it's a new item
-      setCurrentStock("0");
+      setItemName(passedItemName);
+      setStockQuantity("0"); // Update for new item
       setCostPricePerUnit("0");
       setSellingPricePerUnit("0");
-      setIsEditing(false); // Ensure it's treated as an add operation
+      setIsEditing(false);
     } else {
-      // For a fresh "Add Item" flow (not redirected or editing)
       setItemName("");
-      setCurrentStock("0");
+      setStockQuantity("0"); // Update for new item default
       setCostPricePerUnit("0");
       setSellingPricePerUnit("0");
       setIsEditing(false);
     }
   }, [passedItemName, isRedirectedNewItem, itemToEdit]);
+
+  // Use useLayoutEffect to set navigation options for the header
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerTitle: isEditing ? t("edit_item") : t("add_new_item"),
+      headerShown: true, // Ensure the header is shown
+      headerStyle: {
+        backgroundColor: "#28a745", // Match your desired green color
+      },
+      headerTintColor: "#fff", // White color for title and back arrow
+      headerBackTitleVisible: false, // Hide the iOS "Back" text next to the arrow
+    });
+  }, [navigation, isEditing, t]);
+
+  const parseNumberFromVoice = (text) => {
+    const cleanedText = text.replace(/,/g, "");
+    const parsed = parseFloat(cleanedText);
+    if (!isNaN(parsed)) {
+      return String(parsed);
+    }
+    return "";
+  };
+
+  useEffect(() => {
+    if (recognizedText && activeInput) {
+      switch (activeInput) {
+        case "itemName":
+          setItemName(recognizedText);
+          break;
+        case "stockQuantity": // Updated to stockQuantity
+          setStockQuantity(parseNumberFromVoice(recognizedText));
+          break;
+        case "costPricePerUnit":
+          setCostPricePerUnit(parseNumberFromVoice(recognizedText));
+          break;
+        case "sellingPricePerUnit":
+          setSellingPricePerUnit(parseNumberFromVoice(recognizedText));
+          break;
+        // Removed cases for unit, category, description
+      }
+      setRecognizedText("");
+      stopListening();
+      setActiveInput(null);
+    }
+    // If listening stops for any reason (user stops, error), clear active input
+    if (!isListening && activeInput) {
+      setActiveInput(null);
+    }
+  }, [
+    recognizedText,
+    activeInput,
+    isListening,
+    setRecognizedText,
+    stopListening,
+  ]);
+
+  useEffect(() => {
+    if (voiceError) {
+      Toast.show({
+        type: "error",
+        text1: t("voice_input_error"),
+        text2: voiceError,
+        visibilityTime: 4000,
+      });
+    }
+  }, [voiceError, t]);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        cancelListening();
+        setActiveInput(null);
+        setRecognizedText("");
+      };
+    }, [cancelListening, setRecognizedText])
+  );
 
   const handleSaveItem = async () => {
     if (!itemName.trim()) {
@@ -72,26 +176,37 @@ export default function ManageItemScreen() {
     }
 
     setLoading(true);
+    cancelListening();
+    setActiveInput(null);
+
     try {
+      const derivedVoiceKeywords = itemName
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((word) => word.length > 0)
+        .map((word) => word.replace(/[^a-z0-9]/g, ""));
+
+      const uniqueKeywords = [...new Set(derivedVoiceKeywords)];
+
       const itemData = {
+        id: itemToEdit?.id || Date.now().toString(),
         itemName: itemName.trim(),
-        currentStock: parseFloat(currentStock) || 0,
+        // Updated to stockQuantity for saving
+        currentStock: parseFloat(stockQuantity) || 0, // Keep the key as 'currentStock' for storage consistency if needed, but use stockQuantity state
         costPricePerUnit: parseFloat(costPricePerUnit) || 0,
         sellingPricePerUnit: parseFloat(sellingPricePerUnit) || 0,
-        // If you need to support renaming an item:
-        // originalItemName: isEditing && itemToEdit ? itemToEdit.itemName : undefined,
+        // Removed unit, category, description from itemData
+        voiceKeywords: uniqueKeywords,
       };
 
-      // This function handles both add and update based on itemName for GENERAL INVENTORY
       await saveInventoryItem(itemData);
-
       Toast.show({
         type: "success",
         text1: isEditing
-          ? t("item_updated_successfully")
-          : t("item_added_successfully"),
+          ? t("inventory_item_updated")
+          : t("inventory_item_added"),
       });
-      navigation.goBack(); // Go back to the previous screen (e.g., Inventory List)
+      navigation.goBack();
     } catch (error) {
       console.error("Error saving item:", error);
       Toast.show({
@@ -104,77 +219,183 @@ export default function ManageItemScreen() {
     }
   };
 
+  const handleMicPress = (inputName) => {
+    if (isListening && activeInput === inputName) {
+      cancelListening(); // Stop listening if already active for this field
+      setActiveInput(null);
+    } else {
+      cancelListening(); // Cancel any existing listening session
+      setActiveInput(inputName);
+      setRecognizedText("");
+      startListening(speechRecognizerLocale.current); // Pass the current locale to the hook
+    }
+  };
+
+  const renderInputField = (
+    label,
+    value,
+    onChangeText,
+    placeholder,
+    inputIdentifier,
+    keyboardType = "default",
+    multiline = false,
+    numberOfLines = 1,
+    autoCapitalize = "sentences",
+    editable = true,
+    micPlaceholderKey // New prop for mic button text translation key
+  ) => (
+    <>
+      <Text style={styles.label}>{label}</Text>
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={[
+            styles.input,
+            multiline && styles.multilineInput,
+            !editable && styles.disabledInput,
+          ]}
+          value={value}
+          onChangeText={onChangeText}
+          placeholder={placeholder}
+          placeholderTextColor="#999"
+          keyboardType={keyboardType}
+          multiline={multiline}
+          numberOfLines={numberOfLines}
+          autoCapitalize={autoCapitalize}
+          onFocus={() => setActiveInput(inputIdentifier)}
+          onBlur={() => setActiveInput(null)}
+          editable={editable}
+        />
+        <TouchableOpacity
+          style={[
+            styles.micButton,
+            isListening &&
+              activeInput === inputIdentifier &&
+              styles.micButtonActive,
+            !editable && styles.micButtonDisabled,
+          ]}
+          onPress={() => handleMicPress(inputIdentifier)}
+          disabled={!editable}
+        >
+          {isListening && activeInput === inputIdentifier ? (
+            <ActivityIndicator size="small" color="red" />
+          ) : (
+            <Icon
+              name="microphone-outline"
+              size={24}
+              color={!editable ? "#aaa" : "#666"}
+            />
+          )}
+          <Text style={styles.micButtonText}>
+            {isListening && activeInput === inputIdentifier
+              ? t("listening")
+              : t(micPlaceholderKey)}
+          </Text>
+        </TouchableOpacity>
+      </View>
+      {isListening &&
+        partialResults.length > 0 &&
+        activeInput === inputIdentifier && (
+          <Text style={styles.partialText}>
+            {t("listening")} {partialResults[0]}...
+          </Text>
+        )}
+    </>
+  );
+
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+      style={styles.fullContainer}
     >
-      <View style={styles.form}>
-        <Text style={styles.title}>
-          {isEditing ? t("edit_item") : t("add_new_item")}
-        </Text>
+      <FocusAwareStatusBar
+        backgroundColor="#28a745" // Status bar will match the new header color
+        barStyle="light-content"
+        animated={true}
+      />
 
-        <Text style={styles.label}>{t("item_name")}</Text>
-        <TextInput
-          style={styles.input}
-          value={itemName}
-          onChangeText={setItemName}
-          placeholder={t("enter_item_name")}
-          placeholderTextColor="#999"
-          // If editing, you might want to prevent changing the name unless explicitly allowed
-          // editable={!isEditing || isRedirectedNewItem} // Allow changing for new items, prevent for existing edits
+      <ScrollView contentContainerStyle={styles.scrollViewContent}>
+        <View style={styles.form}>
+          {renderInputField(
+            t("item_name"),
+            itemName,
+            setItemName,
+            t("enter_item_name"),
+            "itemName",
+            "default",
+            false,
+            1,
+            "sentences",
+            !isEditing,
+            "speak_item_name" // Mic button text key
+          )}
+          {renderInputField(
+            t("stock_quantity"), // Updated label to stock_quantity
+            stockQuantity, // Updated to stockQuantity state
+            setStockQuantity, // Updated to setStockQuantity
+            t("enter_stock_quantity"), // Updated placeholder
+            "stockQuantity", // Updated identifier
+            "numeric",
+            false,
+            1,
+            "none",
+            true,
+            "speak_quantity" // Mic button text key
+          )}
+          {renderInputField(
+            t("cost_price_per_unit"),
+            costPricePerUnit,
+            setCostPricePerUnit,
+            t("enter_cost_price"),
+            "costPricePerUnit",
+            "numeric",
+            false,
+            1,
+            "none",
+            true,
+            "speak_price" // Mic button text key
+          )}
+          {renderInputField(
+            t("selling_price_per_unit"),
+            sellingPricePerUnit,
+            setSellingPricePerUnit,
+            t("enter_selling_price"),
+            "sellingPricePerUnit",
+            "numeric",
+            false,
+            1,
+            "none",
+            true,
+            "speak_price" // Mic button text key
+          )}
+        </View>
+      </ScrollView>
+      {loading || isListening ? (
+        <ActivityIndicator
+          size="large"
+          color="#28a745"
+          style={styles.loading}
         />
-
-        <Text style={styles.label}>{t("current_stock")}</Text>
-        <TextInput
-          style={styles.input}
-          value={currentStock}
-          onChangeText={setCurrentStock}
-          keyboardType="numeric"
-          placeholder={t("enter_current_stock")}
-          placeholderTextColor="#999"
-        />
-
-        <Text style={styles.label}>{t("cost_price_per_unit")}</Text>
-        <TextInput
-          style={styles.input}
-          value={costPricePerUnit}
-          onChangeText={setCostPricePerUnit}
-          keyboardType="numeric"
-          placeholder={t("enter_cost_price")}
-          placeholderTextColor="#999"
-        />
-
-        <Text style={styles.label}>{t("selling_price_per_unit")}</Text>
-        <TextInput
-          style={styles.input}
-          value={sellingPricePerUnit}
-          onChangeText={setSellingPricePerUnit}
-          keyboardType="numeric"
-          placeholder={t("enter_selling_price")}
-          placeholderTextColor="#999"
-        />
-
-        {loading ? (
-          <ActivityIndicator size="large" color="#007bff" />
-        ) : (
-          <TouchableOpacity style={styles.button} onPress={handleSaveItem}>
-            <Text style={styles.buttonText}>
-              {isEditing ? t("update_item") : t("add_item")}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
+      ) : (
+        <TouchableOpacity style={styles.button} onPress={handleSaveItem}>
+          <Text style={styles.buttonText}>
+            {isEditing ? t("update_inventory_item") : t("add_to_inventory")}
+          </Text>
+        </TouchableOpacity>
+      )}
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  fullContainer: {
     flex: 1,
     backgroundColor: "#f6f6f6",
+  },
+  scrollViewContent: {
+    flexGrow: 1,
     justifyContent: "center",
     padding: 20,
+    backgroundColor: "#f6f6f6",
   },
   form: {
     backgroundColor: "#fff",
@@ -186,20 +407,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    marginBottom: 20,
-    textAlign: "center",
-    color: "#333",
-  },
   label: {
     fontSize: 16,
     marginBottom: 8,
     color: "#333",
     fontWeight: "500",
   },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 15,
+  },
   input: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#ddd",
     borderRadius: 8,
@@ -207,11 +427,47 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    marginBottom: 15,
     backgroundColor: "#fcfcfc",
+    marginRight: 10,
+  },
+  disabledInput: {
+    backgroundColor: "#e9ecef",
+    color: "#6c757d",
+  },
+  micButton: {
+    flexDirection: "row", // Arrange icon and text horizontally
+    alignItems: "center",
+    padding: 10,
+    borderRadius: 8,
+    backgroundColor: "#e0e0e0",
+    justifyContent: "center",
+    gap: 5, // Space between icon and text
+  },
+  micButtonActive: {
+    backgroundColor: "#ffe0e0",
+  },
+  micButtonDisabled: {
+    backgroundColor: "#f1f1f1",
+    opacity: 0.6,
+  },
+  micButtonText: {
+    color: "#666", // Default text color
+    fontSize: 12,
+  },
+  multilineInput: {
+    minHeight: 100,
+    textAlignVertical: "top",
+    paddingTop: 12,
+  },
+  partialText: {
+    fontSize: 14,
+    color: "#28a745",
+    textAlign: "center",
+    marginBottom: 10,
+    marginTop: -10,
   },
   button: {
-    backgroundColor: "#007bff",
+    backgroundColor: "#28a745",
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: "center",
@@ -221,5 +477,9 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 18,
     fontWeight: "600",
+  },
+  loading: {
+    marginTop: 20,
+    marginBottom: 20,
   },
 });
