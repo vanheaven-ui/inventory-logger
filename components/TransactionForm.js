@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Alert, // Added Alert for better user feedback
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
 
@@ -60,6 +61,7 @@ const TransactionForm = ({
 
   const [activeVoiceField, setActiveVoiceField] = useState(null);
 
+  // Effect to process recognized text when a final result is available
   useEffect(() => {
     if (recognizedText && activeVoiceField) {
       const textToProcess = recognizedText.toLowerCase().trim();
@@ -75,8 +77,7 @@ const TransactionForm = ({
           break;
         case "mmAmount":
           valueToSet = textToProcess.match(/\d+(\.\d+)?/);
-          if (activeVoiceField === "mmAmount")
-            setMmAmount(valueToSet ? valueToSet[0] : "");
+          setMmAmount(valueToSet ? valueToSet[0] : "");
           break;
         case "mmNetworkName":
           setMmNetworkName(textToProcess);
@@ -85,24 +86,27 @@ const TransactionForm = ({
           break;
       }
       setActiveVoiceField(null);
-      setRecognizedText("");
-      stopListening();
+      setRecognizedText(""); // Clear recognized text after processing
+      stopListening(); // Stop listening after processing the final result
     }
+    // If listening stops for any reason (e.g., error, timeout, or manual stop)
+    // and there was an active field, clear the active field.
     if (!isListening && activeVoiceField) {
       setActiveVoiceField(null);
     }
   }, [
     recognizedText,
     activeVoiceField,
-    isListening,
+    isListening, // Keep this dependency
     setProductName,
     setQuantity,
     setMmNetworkName,
     setMmAmount,
     setRecognizedText,
-    stopListening,
+    stopListening, // Ensure stopListening is a dependency
   ]);
 
+  // Effect to handle form type change (Mobile Money Agent vs. General Product)
   useEffect(() => {
     if (isMobileMoneyAgent) {
       setProductName("");
@@ -111,11 +115,31 @@ const TransactionForm = ({
       setMmNetworkName("");
       setMmAmount("");
     }
-    (async () => {
-      await cancelListening();
-    })();
+
+    // IMPORTANT: Only attempt to cancel voice recognition if it's currently active.
+    // This prevents trying to cancel when there's nothing to cancel.
+    // Also, wrap in an async IIFE for await.
+    if (isListening) {
+      // Add condition here
+      (async () => {
+        try {
+          console.log(
+            "TransactionForm: Cancelling voice due to form type change."
+          );
+          await cancelListening();
+        } catch (e) {
+          console.error(
+            "TransactionForm: Error cancelling voice on form type change:",
+            e
+          );
+          // Optionally, show an alert to the user if this is a critical error
+          // Alert.alert("Voice Error", "Could not stop voice recognition cleanly when changing form type.");
+        }
+      })();
+    }
   }, [
     isMobileMoneyAgent,
+    isListening, // Add isListening as a dependency
     setProductName,
     setQuantity,
     setMmNetworkName,
@@ -123,14 +147,78 @@ const TransactionForm = ({
     cancelListening,
   ]);
 
-  const handleVoiceInputPress = (field) => {
-    if (isListening && activeVoiceField === field) {
-      cancelListening();
-      setActiveVoiceField(null);
+  // Refined handleVoiceInputPress to prevent redundant cancellations and manage state
+  const handleVoiceInputPress = async (field) => {
+    // If an error exists, notify the user and reset before trying again
+    if (error) {
+      Alert.alert(
+        t("voice_error"),
+        `${t("voice_error_message")}: ${error}\n${t("please_try_again")}`
+      );
+      // Optionally, attempt to destroy/re-init voice engine here if the error is persistent
+      // For now, we rely on the useVoiceRecognition hook's internal cleanup.
+      // It's good to clear the error state in the hook after showing it.
+    }
+
+    if (isListening) {
+      // Case 1: Already listening
+      if (activeVoiceField === field) {
+        // User clicked the mic button for the currently active field: Stop listening.
+        console.log(`TransactionForm: Stopping voice for ${field}`);
+        try {
+          await cancelListening(); // Use cancel for a clean stop and state reset
+          setActiveVoiceField(null);
+        } catch (e) {
+          console.error(
+            `TransactionForm: Error stopping voice for ${field}:`,
+            e
+          );
+          Alert.alert(t("voice_error"), t("failed_to_stop_listening"));
+          // Even if cancel fails, we attempt to reset our local state
+          setActiveVoiceField(null);
+        }
+      } else {
+        // User clicked a DIFFERENT mic button while another was active:
+        // First, cancel the current session, then start a new one for the new field.
+        console.log(
+          `TransactionForm: Switching from ${activeVoiceField} to ${field}`
+        );
+        try {
+          await cancelListening(); // Ensure current session is stopped before starting new
+        } catch (e) {
+          console.error(
+            `TransactionForm: Error cancelling voice before switching fields:`,
+            e
+          );
+          Alert.alert(t("voice_error"), t("failed_to_switch_voice_input"));
+          // Continue trying to start the new session even if cancel failed
+          // as the previous session might have implicitly ended or is in a bad state.
+        } finally {
+          setActiveVoiceField(field);
+          try {
+            await startListening(speechRecognizerLocale.current);
+          } catch (e) {
+            console.error(
+              `TransactionForm: Error starting voice for ${field} after switch:`,
+              e
+            );
+            Alert.alert(t("voice_error"), t("failed_to_start_listening"));
+            setActiveVoiceField(null); // Clear active field if start fails
+          }
+        }
+      }
     } else {
-      cancelListening();
+      // Case 2: Not listening at all (or was just stopped/cancelled from elsewhere)
+      // Just start listening for the clicked field.
+      console.log(`TransactionForm: Starting voice for ${field}`);
       setActiveVoiceField(field);
-      startListening(speechRecognizerLocale.current);
+      try {
+        await startListening(speechRecognizerLocale.current);
+      } catch (e) {
+        console.error(`TransactionForm: Error starting voice for ${field}:`, e);
+        Alert.alert(t("voice_error"), t("failed_to_start_listening"));
+        setActiveVoiceField(null); // Clear active field if start fails
+      }
     }
   };
 
@@ -138,6 +226,8 @@ const TransactionForm = ({
     <TouchableOpacity
       style={styles.voiceButton}
       onPress={() => handleVoiceInputPress(fieldKey)}
+      // Disable button if an overall voice error exists that prevents starting
+      disabled={!!error && !isListening}
     >
       {isListening && activeVoiceField === fieldKey ? (
         <ActivityIndicator size="small" color="#0066cc" />
@@ -170,8 +260,6 @@ const TransactionForm = ({
         transactionType === "restock" &&
         String(mmNetworkName || "").trim() && (
           <View style={styles.infoBox}>
-            {" "}
-            {/* Changed style name */}
             <FontAwesome5 name="mobile-alt" size={20} color="#007bff" />
             <Text style={styles.infoLabel}>
               {t("float_balance_for_network", {
@@ -301,16 +389,13 @@ const styles = StyleSheet.create({
   form: {
     padding: 16,
   },
-  // REMOVED: balanceInfoContainer style
-
-  // NEW/MODIFIED: infoBox style, combining previous balanceInfoContainer and balanceItem properties
   infoBox: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#e0f7fa", // Light blue background for info
+    backgroundColor: "#e0f7fa",
     borderRadius: 10,
     padding: 15,
-    marginBottom: 15, // Margin between info boxes and to the first input
+    marginBottom: 15,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -318,20 +403,17 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   infoLabel: {
-    // Renamed from balanceLabel
     fontSize: 16,
     fontWeight: "500",
-    color: "#005a6a", // Darker blue-green for label
+    color: "#005a6a",
     marginLeft: 10,
     marginRight: 5,
   },
   infoValue: {
-    // Renamed from balanceValue
     fontSize: 16,
     fontWeight: "700",
-    color: "#007bff", // Blue for values
+    color: "#007bff",
   },
-
   label: {
     fontSize: 14,
     color: "#555",
