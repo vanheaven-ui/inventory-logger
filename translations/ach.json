@@ -1,6 +1,6 @@
 {
   "app_name": "Cam pao dano",
-  "english": "Luo Anglish",
+  "english": "English",
   "luganda": "Luganda",
   "swahili": "Swahili",
   "runyakitara": "Runyakitara",
@@ -125,7 +125,7 @@
   "speak_price": "Wene price",
   "update_inventory_item": "Update poteri",
   "add_to_inventory": "Add to inventory",
-  "todays_summary": "Summary leero",
+  "todays_summary": "Summary",
   "since_app_start": "Since app start",
   "since": "Since",
   "error_loading_summary": "Tye load summary",

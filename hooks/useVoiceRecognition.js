@@ -111,6 +111,7 @@ const useVoiceRecognition = () => {
   // Function to start listening
   const startListening = useCallback(
     async (locale = "en-US") => {
+      
       if (!isMounted.current) return;
 
       const initSuccess = await initializeVoiceEngine();

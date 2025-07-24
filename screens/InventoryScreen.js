@@ -66,10 +66,8 @@ export default function InventoryScreen() {
       if (isMobileMoneyAgent) {
         items = await getFloatEntries();
         const physicalCash = await getPhysicalCash();
-        console.log(physicalCash)
         setTotalCostValue(physicalCash);
         calculatedTotalCost = physicalCash;
-
         console.log("InventoryScreen: Loaded float entries:", items);
         console.log("InventoryScreen: Loaded Physical Cash:", physicalCash);
 

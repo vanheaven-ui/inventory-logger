@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react"; 
+import React, { useCallback, useEffect, useState } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
@@ -6,7 +6,7 @@ import Toast, {
   BaseToast,
   ErrorToast,
   SuccessToast,
-} from "react-native-toast-message"; // Import BaseToast, ErrorToast, SuccessToast
+} from "react-native-toast-message";
 
 // Import screens
 import HomeScreen from "./screens/HomeScreen";
@@ -21,7 +21,7 @@ import ManageFloatScreen from "./screens/ManageFloatScreen";
 import { LanguageProvider, useLanguage } from "./context/LanguageContext";
 
 // Import the initialization function
-import { initializeShopData } from "./storage/initialization"
+import { initializeShopData } from "./storage/initialization";
 
 // Define the color palette
 const Colors = {
@@ -61,7 +61,13 @@ const toastConfig = {
         color: Colors.darkGray,
       }}
       // Add more customization for visibility/shadow if needed
-      // containerStyle={{ elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84 }}
+      containerStyle={{
+        elevation: 5,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+      }}
     />
   ),
   error: (props) => (
@@ -126,7 +132,7 @@ const toastConfig = {
       }}
     />
   ),
-  // You can add more custom types here if you need unique designs
+  // More custom types here for unique designs
   // For example:
   // custom_success: (props) => (
   //   <BaseToast

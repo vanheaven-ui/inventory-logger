@@ -6,22 +6,24 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert, // Added Alert for better user feedback
+  Alert,
+  FlatList,
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
 
-import useVoiceRecognition from "../hooks/useVoiceRecognition";
+// useVoiceRecognition is now passed as props from TransactionScreen
+// import useVoiceRecognition from "../hooks/useVoiceRecognition";
 import { useLanguage } from "../context/LanguageContext";
 
 const TransactionForm = ({
   isMobileMoneyAgent,
-  transactionType, // 'sell' or 'restock'
+  transactionType,
   currentPhysicalCash,
-  availableFloat, // For selected MM network
-  availableQuantity, // For selected general product
+  availableFloat,
+  availableQuantity,
 
   productName,
-  setProductName,
+  setProductName, // Keep this as TransactionScreen's onProductNameChange will wrap it
   quantity,
   setQuantity,
 
@@ -32,10 +34,30 @@ const TransactionForm = ({
 
   validationErrors,
   handleSaveTransaction,
+
+  // Voice Recognition Props (now received from parent)
+  recognizedText,
+  partialResults,
+  isListening,
+  error,
+  startListening,
+  stopListening,
+  cancelListening,
+  setRecognizedText,
+
+  // Props for Product Suggestions
+  filteredProductSuggestions,
+  showProductSuggestions,
+  onProductSuggestionPress,
+  onProductNameChange, // This is the combined setter for product name
 }) => {
   const { t, language } = useLanguage();
 
   const speechRecognizerLocale = useRef(language);
+
+  // Ref for the product name input to handle blur/focus for suggestions
+  const productNameInputRef = useRef(null);
+  const [isProductNameFocused, setIsProductNameFocused] = useState(false);
 
   useEffect(() => {
     speechRecognizerLocale.current = language;
@@ -47,18 +69,6 @@ const TransactionForm = ({
     minimumFractionDigits: 0,
   });
 
-  // --- Voice Recognition Hook ---
-  const {
-    recognizedText,
-    partialResults,
-    isListening,
-    error,
-    startListening,
-    stopListening,
-    cancelListening,
-    setRecognizedText,
-  } = useVoiceRecognition();
-
   const [activeVoiceField, setActiveVoiceField] = useState(null);
 
   // Effect to process recognized text when a final result is available
@@ -69,7 +79,7 @@ const TransactionForm = ({
 
       switch (activeVoiceField) {
         case "productName":
-          setProductName(textToProcess);
+          onProductNameChange(textToProcess); // Use combined handler for voice input
           break;
         case "quantity":
           valueToSet = textToProcess.match(/\d+(\.\d+)?/);
@@ -97,30 +107,26 @@ const TransactionForm = ({
   }, [
     recognizedText,
     activeVoiceField,
-    isListening, // Keep this dependency
-    setProductName,
+    isListening,
+    onProductNameChange,
     setQuantity,
     setMmNetworkName,
     setMmAmount,
     setRecognizedText,
-    stopListening, // Ensure stopListening is a dependency
+    stopListening,
   ]);
 
   // Effect to handle form type change (Mobile Money Agent vs. General Product)
   useEffect(() => {
     if (isMobileMoneyAgent) {
-      setProductName("");
+      onProductNameChange(""); // Clear product name using the new handler
       setQuantity("");
     } else {
       setMmNetworkName("");
       setMmAmount("");
     }
 
-    // IMPORTANT: Only attempt to cancel voice recognition if it's currently active.
-    // This prevents trying to cancel when there's nothing to cancel.
-    // Also, wrap in an async IIFE for await.
     if (isListening) {
-      // Add condition here
       (async () => {
         try {
           console.log(
@@ -132,15 +138,13 @@ const TransactionForm = ({
             "TransactionForm: Error cancelling voice on form type change:",
             e
           );
-          // Optionally, show an alert to the user if this is a critical error
-          // Alert.alert("Voice Error", "Could not stop voice recognition cleanly when changing form type.");
         }
       })();
     }
   }, [
     isMobileMoneyAgent,
-    isListening, // Add isListening as a dependency
-    setProductName,
+    isListening,
+    onProductNameChange,
     setQuantity,
     setMmNetworkName,
     setMmAmount,
@@ -155,9 +159,6 @@ const TransactionForm = ({
         t("voice_error"),
         `${t("voice_error_message")}: ${error}\n${t("please_try_again")}`
       );
-      // Optionally, attempt to destroy/re-init voice engine here if the error is persistent
-      // For now, we rely on the useVoiceRecognition hook's internal cleanup.
-      // It's good to clear the error state in the hook after showing it.
     }
 
     if (isListening) {
@@ -174,7 +175,6 @@ const TransactionForm = ({
             e
           );
           Alert.alert(t("voice_error"), t("failed_to_stop_listening"));
-          // Even if cancel fails, we attempt to reset our local state
           setActiveVoiceField(null);
         }
       } else {
@@ -191,8 +191,6 @@ const TransactionForm = ({
             e
           );
           Alert.alert(t("voice_error"), t("failed_to_switch_voice_input"));
-          // Continue trying to start the new session even if cancel failed
-          // as the previous session might have implicitly ended or is in a bad state.
         } finally {
           setActiveVoiceField(field);
           try {
@@ -226,7 +224,6 @@ const TransactionForm = ({
     <TouchableOpacity
       style={styles.voiceButton}
       onPress={() => handleVoiceInputPress(fieldKey)}
-      // Disable button if an overall voice error exists that prevents starting
       disabled={!!error && !isListening}
     >
       {isListening && activeVoiceField === fieldKey ? (
@@ -331,21 +328,55 @@ const TransactionForm = ({
           <Text style={styles.label}>{t("product_name_label")}</Text>
           <View style={styles.inputContainer}>
             <TextInput
+              ref={productNameInputRef}
               style={[
                 styles.input,
                 validationErrors?.productName && styles.errorInput,
                 { flex: 1 },
               ]}
-              value={productName}
-              onChangeText={setProductName}
+              value={
+                isListening &&
+                activeVoiceField === "productName" &&
+                partialResults.length > 0
+                  ? partialResults[0] // Display partial result while listening
+                  : productName // Otherwise, display the actual state
+              }
+              onChangeText={onProductNameChange} // Use the new prop
               placeholder={t("product_name_placeholder")}
               placeholderTextColor="#999"
+              onFocus={() => setIsProductNameFocused(true)} // Show suggestions when focused
+              onBlur={() => {
+                // Delay hiding to allow tap on suggestion
+                setTimeout(() => setIsProductNameFocused(false), 100);
+              }}
             />
             {renderVoiceInputButton("productName", "speak_product_name")}
           </View>
           {validationErrors?.productName && (
             <Text style={styles.errorText}>{validationErrors.productName}</Text>
           )}
+
+          {/* --- MODIFIED: Product Suggestions List --- */}
+          {/* Show suggestions if input focused AND (suggestions exist OR voice is active for this field) */}
+          {isProductNameFocused &&
+            showProductSuggestions &&
+            filteredProductSuggestions.length > 0 && (
+              <View style={styles.suggestionListContainer}>
+                <FlatList
+                  data={filteredProductSuggestions}
+                  keyExtractor={(item) => item}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={styles.suggestionItem}
+                      onPress={() => onProductSuggestionPress(item)}
+                    >
+                      <Text style={styles.suggestionText}>{item}</Text>
+                    </TouchableOpacity>
+                  )}
+                  keyboardShouldPersistTaps="handled" // Important for not dismissing keyboard/suggestions
+                />
+              </View>
+            )}
 
           <Text style={styles.label}>{t("quantity_label")}</Text>
           <View style={styles.inputContainer}>
@@ -355,7 +386,13 @@ const TransactionForm = ({
                 validationErrors?.quantity && styles.errorInput,
                 { flex: 1 },
               ]}
-              value={quantity}
+              value={
+                isListening &&
+                activeVoiceField === "quantity" &&
+                partialResults.length > 0
+                  ? partialResults[0] // Display partial result while listening
+                  : quantity // Otherwise, display the actual state
+              }
               onChangeText={(text) => setQuantity(text.replace(/[^0-9.]/g, ""))}
               placeholder={t("quantity_placeholder")}
               keyboardType="numeric"
@@ -470,5 +507,29 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "bold",
+  },
+  suggestionListContainer: {
+    maxHeight: 150, // Limit height
+    borderColor: "#ccc",
+    borderWidth: 1,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    marginTop: -10, // Overlap the input field slightly
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+    zIndex: 1, // Ensure it's above other elements within the form
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  suggestionText: {
+    fontSize: 16,
+    color: "#333",
   },
 });

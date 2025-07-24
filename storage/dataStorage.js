@@ -47,6 +47,9 @@ export const calculateCommission = async (
   amount,
   transactionType
 ) => {
+  let count = 0
+  console.log("AMount to determine Commission: ", amount)
+  console.log("Running now", count += 1)
   const floatEntries = await getFloatEntries(); // Fetch all float entries
   const networkEntry = floatEntries.find(
     (entry) =>
@@ -55,6 +58,8 @@ export const calculateCommission = async (
       networkName.toLowerCase().includes(entry.itemName.toLowerCase())
   );
 
+  console.log("Network Entry: ", networkEntry)
+
   if (!networkEntry || !networkEntry.commissionRate) {
     console.warn(`No commission rates found for network: ${networkName}`);
     return 0; // No commission if network or its rates not found
@@ -62,9 +67,14 @@ export const calculateCommission = async (
 
   const { commissionRate } = networkEntry;
 
-  if (transactionType === "withdrawal") {
+  console.log("TRANSACTION TYPE: ", transactionType);
+  
+
+  if (transactionType === "sell") {
+    console.log("WITHDRAW: ", Math.round(amount *(commissionRate.withdrawal || 0)))
     return Math.round(amount * (commissionRate.withdrawal || 0));
-  } else if (transactionType === "deposit") {
+  } else if (transactionType === "restock") {
+    console.log("DEPOSIT: ", Math.round(amount *(commissionRate.deposit || 0)))
     return Math.round(amount * (commissionRate.deposit || 0));
   }
 
@@ -153,6 +163,8 @@ export const getTransactions = async () => {
  * @param {object} transactionData - Details of the transaction (type, itemName, quantity, customer, etc.)
  */
 export const saveTransaction = async (transaction) => {
+  console.log(transaction);
+  
   try {
     // Load existing data
     const existingTransactions = await getTransactions();
@@ -172,17 +184,21 @@ export const saveTransaction = async (transaction) => {
     if (newTransaction.isMobileMoney) {
       const networkName = newTransaction.itemName; // 'itemName' holds the network name
       const mmAmount = newTransaction.amount; // 'amount' holds the transaction value
+      
       const commission = await calculateCommission(
         networkName,
         mmAmount,
         newTransaction.type
       );
+      
       newTransaction.commissionEarned = commission; // Attach commission to the transaction record
 
       if (newTransaction.type === "sell") {
         // Mobile Money Withdrawal
         // Physical cash goes OUT, Float comes IN (digitally)
         currentPhysicalCash -= mmAmount; // Cash given to customer
+        console.log(currentPhysicalCash);
+        
         floatEntries = floatEntries.map((entry) =>
           entry.itemName.toLowerCase() === networkName.toLowerCase()
             ? { ...entry, currentStock: entry.currentStock + mmAmount } // Float increases
@@ -216,7 +232,7 @@ export const saveTransaction = async (transaction) => {
               ? { ...item, currentStock: item.currentStock - quantity }
               : item
           );
-          currentPhysicalCash += productDetails.sellingPrice * quantity; // Cash received from sale
+          // currentPhysicalCash += productDetails.sellingPrice * quantity; // Cash received from sale
         } else if (newTransaction.type === "restock") {
           // Restock
           inventoryItems = inventoryItems.map((item) =>
@@ -224,7 +240,7 @@ export const saveTransaction = async (transaction) => {
               ? { ...item, currentStock: item.currentStock + quantity }
               : item
           );
-          currentPhysicalCash -= productDetails.costPrice * quantity; // Cash paid for restock
+          // currentPhysicalCash -= productDetails.costPrice * quantity; // Cash paid for restock
         }
       }
     }
@@ -770,6 +786,7 @@ export const getCommissionEarnings = async () => {
  * @returns {Promise<boolean>} True if successful, false otherwise.
  */
 export const saveCommissionEarnings = async (amount) => {
+  console.log("AMOUNT FOR COMMISSION: ", amount)
   try {
     const stringValue = String(Number(amount));
     await AsyncStorage.setItem(COMMISSION_EARNINGS_KEY, stringValue);

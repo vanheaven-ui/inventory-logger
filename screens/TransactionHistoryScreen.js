@@ -12,10 +12,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getTransactions, overwriteTransactions } from "../storage/dataStorage";
-import { useLanguage } from "../context/LanguageContext"; // Import useLanguage hook
+import { useLanguage } from "../context/LanguageContext"; 
 
-// Import FocusAwareStatusBar
-import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; // Adjust path if needed
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; 
 
 const IS_AGENT_KEY = "isMobileMoneyAgent";
 
@@ -42,7 +41,7 @@ const TransactionHistoryScreen = ({ navigation }) => {
         ...tx,
         id: tx.id || `${tx.timestamp}-${index}`, // Use existing ID or create one
       }));
-      setTransactions(transactionsWithIds.reverse()); // Latest first
+      setTransactions(transactionsWithIds.reverse()); 
     } catch (error) {
       console.error("Failed to load transactions:", error);
     }
@@ -63,21 +62,21 @@ const TransactionHistoryScreen = ({ navigation }) => {
 
   const handleClearHistory = async () => {
     Alert.alert(
-      t("confirm"), // Use translation
-      t("confirm_delete_history"), // Use translation
+      t("confirm"), 
+      t("confirm_delete_history"), 
       [
-        { text: t("cancel"), style: "cancel" }, // Use translation
+        { text: t("cancel"), style: "cancel" }, 
         {
-          text: t("yes_delete"), // Use translation
+          text: t("yes_delete"), 
           style: "destructive",
           onPress: async () => {
             try {
               await overwriteTransactions([]);
               setTransactions([]);
-              Alert.alert(t("success"), t("history_cleared_success")); // Use translation
+              Alert.alert(t("success"), t("history_cleared_success")); 
             } catch (error) {
               console.error("Failed to clear transaction history:", error);
-              Alert.alert(t("error"), t("history_cleared_error")); // Use translation
+              Alert.alert(t("error"), t("history_cleared_error")); 
             }
           },
         },

@@ -83,21 +83,22 @@ export default function ManageFloatScreen() {
   }, [language]);
 
   // --- Header Configuration with React Navigation ---
+  // Updated header style to match new modern look
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: t("manage_float"),
       headerShown: true,
       headerStyle: {
-        backgroundColor: "#ffc107", // Matching your previous custom header's color
+        backgroundColor: "#007bff", // Primary color for header
       },
       headerTintColor: "#fff", // White color for title and back arrow
       headerBackTitleVisible: false,
       headerRight: () => (
         <TouchableOpacity
-          style={styles.addButton}
+          style={styles.addButtonHeader} // Use a specific style for header button
           onPress={() => handleAddEditFloat()}
         >
-          <Ionicons name="add-circle" size={30} color="#fff" />
+          <Ionicons name="add" size={26} color="#fff" />
         </TouchableOpacity>
       ),
     });
@@ -367,25 +368,26 @@ export default function ManageFloatScreen() {
   const renderFloatItem = ({ item }) => (
     <View style={styles.itemCard}>
       <View style={styles.itemDetails}>
-        <Text style={styles.itemName}>
-          {t("network")}: {item.itemName}
-        </Text>
+        <Text style={styles.itemName}>{item.itemName}</Text>
         <Text style={styles.itemStock}>
-          {t("current_e_value_float")}: {item.currentStock.toLocaleString()} UGX
+          {t("current_e_value_float")}:{" "}
+          <Text style={styles.amountText}>
+            UGX {item.currentStock.toLocaleString()}
+          </Text>
         </Text>
       </View>
       <View style={styles.itemActions}>
         <TouchableOpacity
-          style={styles.editButton}
+          style={[styles.actionButton, styles.editButton]}
           onPress={() => handleAddEditFloat(item)}
         >
-          <Ionicons name="pencil" size={20} color="#fff" />
+          <Ionicons name="pencil-outline" size={20} color="#fff" />
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.deleteButton}
+          style={[styles.actionButton, styles.deleteButton]}
           onPress={() => handleDeleteEValueFloat(item)}
         >
-          <Ionicons name="trash" size={20} color="#fff" />
+          <Ionicons name="trash-outline" size={20} color="#fff" />
         </TouchableOpacity>
       </View>
     </View>
@@ -401,9 +403,9 @@ export default function ManageFloatScreen() {
       onPress={() => handleMicPress(fieldKey)}
     >
       {isListening && activeInput === fieldKey ? (
-        <ActivityIndicator size="small" color="red" />
+        <ActivityIndicator size="small" color="#fff" />
       ) : (
-        <Icon name="microphone-outline" size={24} color="#666" />
+        <Icon name="microphone-outline" size={24} color="#fff" />
       )}
       <Text style={styles.micButtonText}>
         {isListening && activeInput === fieldKey
@@ -417,19 +419,17 @@ export default function ManageFloatScreen() {
     <SafeAreaView style={styles.safeArea}>
       {/* FocusAwareStatusBar */}
       <FocusAwareStatusBar
-        backgroundColor="#ffc107" // Matching React Navigation header background
-        barStyle="light-content" // Changed to light-content for better contrast with a light background header
+        backgroundColor="#007bff" // Matching React Navigation header background
+        barStyle="light-content"
         animated={true}
       />
 
       <View style={styles.container}>
         {/* Display Total Values */}
-        <View style={styles.totalValueContainer}>
-          <View style={styles.totalValueCard}>
-            <Text style={styles.totalValueLabel}>
-              {t("total_physical_cash")}
-            </Text>
-            <Text style={styles.totalValueText}>
+        <View style={styles.summaryContainer}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>{t("total_physical_cash")}</Text>
+            <Text style={styles.summaryValue}>
               UGX {totalPhysicalCash.toLocaleString()}
             </Text>
             {totalPhysicalCash < MIN_PHYSICAL_CASH_REQUIRED && (
@@ -444,17 +444,14 @@ export default function ManageFloatScreen() {
                 setPhysicalCashInput(totalPhysicalCash.toString()); // Pre-fill with current cash
                 setIsPhysicalCashModalVisible(true);
               }}
-              style={styles.editCashButton}
+              style={styles.adjustButton}
             >
-              <Ionicons name="cash-outline" size={20} color="#007bff" />
-              <Text style={styles.editCashButtonText}>{t("edit_cash")}</Text>
+              <Text style={styles.adjustButtonText}>{t("edit_cash")}</Text>
             </TouchableOpacity>
           </View>
-          <View style={styles.totalValueCard}>
-            <Text style={styles.totalValueLabel}>
-              {t("total_e_value_float")}
-            </Text>
-            <Text style={styles.totalValueText}>
+          <View style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>{t("total_e_value_float")}</Text>
+            <Text style={styles.summaryValue}>
               UGX {totalEValueFloat.toLocaleString()}
             </Text>
           </View>
@@ -467,7 +464,9 @@ export default function ManageFloatScreen() {
             style={styles.loadingIndicator}
           />
         ) : floatEntries.length === 0 ? (
-          <Text style={styles.noDataText}>{t("no_float_networks_added")}</Text>
+          <Text style={styles.noEntriesText}>
+            {t("no_float_networks_added")}
+          </Text>
         ) : (
           <FlatList
             data={floatEntries}
@@ -492,16 +491,17 @@ export default function ManageFloatScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalHeader}>
               {currentItem ? t("edit_e_value_float") : t("add_e_value_float")}
             </Text>
 
             <Text style={styles.label}>{t("network_name")}</Text>
-            <View style={styles.inputContainer}>
+            <View style={styles.inputGroup}>
               <TextInput
                 style={styles.input}
                 placeholder={t("enter_network_name")}
+                placeholderTextColor="#999"
                 value={networkName}
                 onChangeText={setNetworkName}
                 editable={!currentItem} // Prevent editing network name if editing existing float
@@ -515,10 +515,11 @@ export default function ManageFloatScreen() {
             </View>
 
             <Text style={styles.label}>{t("current_float_amount")}</Text>
-            <View style={styles.inputContainer}>
+            <View style={styles.inputGroup}>
               <TextInput
                 style={styles.input}
                 placeholder={t("enter_current_float_amount")}
+                placeholderTextColor="#999"
                 keyboardType="numeric"
                 value={currentFloatAmount}
                 onChangeText={setCurrentFloatAmount}
@@ -573,13 +574,14 @@ export default function ManageFloatScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>{t("set_physical_cash")}</Text>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalHeader}>{t("set_physical_cash")}</Text>
             <Text style={styles.label}>{t("current_physical_cash")}</Text>
-            <View style={styles.inputContainer}>
+            <View style={styles.inputGroup}>
               <TextInput
                 style={styles.input}
                 placeholder={t("enter_physical_cash_amount")}
+                placeholderTextColor="#999"
                 keyboardType="numeric"
                 value={physicalCashInput}
                 onChangeText={setPhysicalCashInput}
@@ -625,203 +627,218 @@ export default function ManageFloatScreen() {
   );
 }
 
+// --- Styles ---
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f6f6f6",
+    backgroundColor: "#f4f6f8", // Light background for overall screen
   },
-  addButton: {
-    // Keep this style as it's used by headerRight
-    padding: 5,
-    marginLeft: 10,
+  addButtonHeader: {
+    paddingHorizontal: 15,
+    paddingVertical: 5,
   },
   container: {
     flex: 1,
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingTop: 20, // Add top padding
   },
-  totalValueContainer: {
+  summaryContainer: {
     flexDirection: "row",
-    justifyContent: "space-around",
-    width: "100%",
-    marginBottom: 20,
-    marginTop: 5,
+    justifyContent: "space-between",
+    marginBottom: 25, // More space below summary cards
   },
-  totalValueCard: {
-    backgroundColor: "#d1ecf1",
-    borderRadius: 10,
-    padding: 15,
+  summaryCard: {
+    backgroundColor: "#fff",
+    borderRadius: 12, // More rounded corners
+    padding: 20,
     flex: 1,
     marginHorizontal: 5,
     alignItems: "center",
-    elevation: 2,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 4 }, // More pronounced shadow
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5, // Android elevation
+    borderWidth: 1,
+    borderColor: "#e0e0e0", // Subtle border
   },
-  totalValueLabel: {
-    fontSize: 14,
-    color: "#0c5460",
+  summaryLabel: {
+    fontSize: 15,
+    color: "#666",
+    marginBottom: 8,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  summaryValue: {
+    fontSize: 24, // Larger value text
+    fontWeight: "bold",
+    color: "#007bff", // Primary blue color
     marginBottom: 5,
-    fontWeight: "bold",
-  },
-  totalValueText: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#007bff",
   },
   warningText: {
     fontSize: 12,
-    color: "#dc3545", // Red color for warning
+    color: "#dc3545", // Red for warnings
     marginTop: 5,
     textAlign: "center",
-    fontWeight: "bold",
+    fontWeight: "500",
   },
-  editCashButton: {
-    flexDirection: "row",
+  adjustButton: {
+    backgroundColor: "#e7f3ff", // Light blue background for adjust button
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderRadius: 25, // Pill shape
+    marginTop: 15,
+    flexDirection: "row", // For icon and text
     alignItems: "center",
-    marginTop: 10,
-    backgroundColor: "#e2f0f4",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
   },
-  editCashButtonText: {
+  adjustButtonText: {
     color: "#007bff",
-    marginLeft: 5,
+    fontSize: 14,
     fontWeight: "bold",
   },
   loadingIndicator: {
     marginTop: 50,
   },
-  noDataText: {
-    fontSize: 16,
-    color: "#888",
+  noEntriesText: {
     textAlign: "center",
+    color: "#999",
     marginTop: 50,
+    fontSize: 16,
+  },
+  listContent: {
+    paddingBottom: 20, // Add some padding to the bottom of the list
   },
   itemCard: {
     backgroundColor: "#fff",
     borderRadius: 10,
-    padding: 15,
-    marginBottom: 10,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    marginBottom: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    elevation: 3,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.08,
     shadowRadius: 3,
+    elevation: 2,
+    borderLeftWidth: 5, // Highlight left border
+    borderLeftColor: "#007bff", // Primary color for highlight
   },
   itemDetails: {
     flex: 1,
     paddingRight: 10,
   },
   itemName: {
-    fontSize: 17,
-    fontWeight: "bold",
+    fontSize: 18,
+    fontWeight: "600",
     color: "#333",
     marginBottom: 5,
   },
   itemStock: {
-    fontSize: 15,
+    fontSize: 16,
     color: "#555",
+  },
+  amountText: {
+    fontWeight: "bold",
+    color: "#007bff",
   },
   itemActions: {
     flexDirection: "row",
     alignItems: "center",
     marginLeft: 15,
   },
-  editButton: {
-    backgroundColor: "#28a745",
+  actionButton: {
     padding: 8,
-    borderRadius: 5,
+    borderRadius: 8,
     marginLeft: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  editButton: {
+    backgroundColor: "#28a745", // Green
   },
   deleteButton: {
-    backgroundColor: "#dc3545",
-    padding: 8,
-    borderRadius: 5,
-    marginLeft: 10,
+    backgroundColor: "#dc3545", // Red
   },
-  // Modal styles
+  // Modal styles (reused and slightly refined)
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    backgroundColor: "rgba(0, 0, 0, 0.4)", // Lighter overlay
   },
-  modalContainer: {
+  modalContent: {
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 15, // More rounded modal
     padding: 25,
     width: "90%",
-    maxWidth: 400,
+    maxWidth: 450,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 }, // Stronger shadow for modals
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 8,
   },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 20,
+  modalHeader: {
+    fontSize: 22,
+    fontWeight: "700",
+    marginBottom: 25, // More space
     textAlign: "center",
     color: "#333",
   },
   label: {
     fontSize: 16,
+    color: "#555",
     marginBottom: 8,
-    color: "#333",
     fontWeight: "500",
   },
-  inputContainer: {
+  inputGroup: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 15,
   },
   input: {
-    flex: 1, // Allows TextInput to take up remaining space
+    flex: 1,
     borderWidth: 1,
-    borderColor: "#ddd",
+    borderColor: "#ccc", // Lighter border
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#fcfcfc",
-    marginRight: 10, // Space between input and mic button
+    backgroundColor: "#f8f8f8", // Light background for input
+    marginRight: 10,
   },
   micButton: {
-    flexDirection: "row", // Arrange icon and text horizontally
+    flexDirection: "row",
     alignItems: "center",
-    padding: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: "#e0e0e0", // Light grey for inactive mic
+    backgroundColor: "#007bff", // Primary blue for mic button
     justifyContent: "center",
-    gap: 5, // Space between icon and text
   },
   micButtonActive: {
-    backgroundColor: "#ffe0e0", // Light red for active mic
+    backgroundColor: "#ff4d4d", // A more vibrant red when active
   },
   micButtonText: {
-    color: "#666", // Default text color
-    fontSize: 12,
+    color: "#fff",
+    marginLeft: 5,
+    fontSize: 13,
+    fontWeight: "bold",
   },
   partialText: {
     fontSize: 14,
     color: "#007bff",
     textAlign: "center",
     marginBottom: 10,
-    marginTop: -10, // Pull up slightly closer to input
+    marginTop: -8, // Adjust to be closer to input
   },
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginTop: 20,
+    marginTop: 25,
   },
   modalButton: {
     paddingVertical: 12,
@@ -841,8 +858,5 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
-  },
-  listContent: {
-    paddingBottom: 20, // Add some padding to the bottom of the list
   },
 });

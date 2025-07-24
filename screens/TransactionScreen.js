@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,12 +10,14 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  FlatList,
 } from "react-native";
 import TransactionForm from "../components/TransactionForm";
 import { useLanguage } from "../context/LanguageContext";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialCommunityIcons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import useVoiceRecognition from "../hooks/useVoiceRecognition"; // Import the hook
 
 // Import your specific data storage functions
 import {
@@ -53,15 +55,34 @@ export default function TransactionScreen({ route }) {
   // Balance/Quantity Info States (derived from storage)
   const [currentPhysicalCash, setCurrentPhysicalCash] = useState(0);
   const [availableFloat, setAvailableFloat] = useState(0); // Float for the selected MM network
-  const [availableQuantity, setAvailableQuantity] = useState(0); // Quantity for the selected product
+  const [availableQuantity, setAvailableQuantity] = useState(0); // Quantity for the selected general product
 
-  // --- New state for existence checks and product details ---
+  // --- States for existence checks and product details ---
   const [productFound, setProductFound] = useState(false);
   const [networkFound, setNetworkFound] = useState(false);
   const [selectedProductDetails, setSelectedProductDetails] = useState(null); // Stores the full product object
 
+  // --- States for Product Suggestions ---
+  const [allProductNames, setAllProductNames] = useState([]); // Stores all product names from inventory
+  const [filteredProductSuggestions, setFilteredProductSuggestions] = useState(
+    []
+  );
+  const [showProductSuggestions, setShowProductSuggestions] = useState(false); // Controls visibility of suggestions
+
   // Validation Errors
   const [validationErrors, setValidationErrors] = useState({});
+
+  // Voice Recognition Hook (Moved up for better scope access)
+  const {
+    recognizedText,
+    partialResults,
+    isListening,
+    error,
+    startListening,
+    stopListening,
+    cancelListening,
+    setRecognizedText,
+  } = useVoiceRecognition();
 
   // --- Data Loading from AsyncStorage and your dataStorage.js ---
 
@@ -101,9 +122,14 @@ export default function TransactionScreen({ route }) {
         setNetworkFound(false); // Reset if not MM agent or no network selected
       }
 
+      // --- MODIFIED: Load ALL general inventory items for suggestions ---
+      const inventoryItems = await getGeneralInventoryItems();
+      const names = inventoryItems.map((item) => item.itemName);
+      setAllProductNames(names); // Store all names for filtering
+
       if (!isMobileMoneyAgent && productName) {
-        const inventoryItems = await getGeneralInventoryItems();
         const product = inventoryItems.find(
+          // Use the already fetched inventoryItems
           (item) =>
             item.itemName &&
             item.itemName.toLowerCase() === productName.toLowerCase()
@@ -122,6 +148,7 @@ export default function TransactionScreen({ route }) {
       setProductFound(false);
       setNetworkFound(false);
       setSelectedProductDetails(null);
+      setAllProductNames([]); // Clear suggestions on error
     }
   }, [isMobileMoneyAgent, productName, mmNetworkName]);
 
@@ -139,7 +166,13 @@ export default function TransactionScreen({ route }) {
       setProductFound(false);
       setNetworkFound(false);
       setSelectedProductDetails(null); // Reset product details
-    }, [loadAgentStatus])
+      // Reset suggestion states
+      setFilteredProductSuggestions([]);
+      setShowProductSuggestions(false);
+      // Also cancel any ongoing voice recognition when leaving/refocusing
+      cancelListening();
+      setRecognizedText(""); // Clear previous voice input
+    }, [loadAgentStatus, cancelListening, setRecognizedText])
   );
 
   // Effect to load balances/quantities whenever relevant state changes
@@ -151,6 +184,50 @@ export default function TransactionScreen({ route }) {
     productName,
     mmNetworkName,
   ]);
+
+  // --- MODIFIED: Effect to filter product suggestions (for both text and voice) ---
+  useEffect(() => {
+    if (!isMobileMoneyAgent) {
+      let currentInput = productName.trim();
+
+      // If voice is active for productName and partial results exist, use them
+      if (isListening && partialResults.length > 0) {
+        currentInput = partialResults[0].trim(); // Use the latest partial result
+      }
+
+      if (currentInput.length > 0) {
+        const lowerCaseInput = currentInput.toLowerCase();
+        const suggestions = allProductNames.filter((name) =>
+          name.toLowerCase().includes(lowerCaseInput)
+        );
+        setFilteredProductSuggestions(suggestions);
+        setShowProductSuggestions(true); // Show suggestions if there's input
+      } else {
+        setFilteredProductSuggestions([]);
+        setShowProductSuggestions(false); // Hide if no input
+      }
+    } else {
+      setFilteredProductSuggestions([]);
+      setShowProductSuggestions(false); // Hide if MM Agent
+    }
+  }, [
+    productName,
+    allProductNames,
+    isMobileMoneyAgent,
+    isListening,
+    partialResults,
+  ]); // Added isListening and partialResults
+
+  // --- Handler for when a suggestion is pressed ---
+  const handleProductSuggestionPress = useCallback(
+    (suggestion) => {
+      setProductName(suggestion);
+      setShowProductSuggestions(false); // Hide suggestions after selection
+      cancelListening(); // Stop any active voice recognition
+      setRecognizedText(""); // Clear previous voice input
+    },
+    [cancelListening, setRecognizedText]
+  );
 
   // --- MODIFIED: Immediate Alert for No Physical Cash on Withdrawal Select ---
   useEffect(() => {
@@ -270,7 +347,7 @@ export default function TransactionScreen({ route }) {
           errors.quantity = t("not_enough_stock");
         }
       }
-      // NEW: Existence check for 'restock'
+      // Existence check for 'restock'
       if (type === "restock" && !productFound && productName.trim()) {
         errors.productName = t("item_not_in_inventory_message", {
           product: productName.trim(),
@@ -315,14 +392,14 @@ export default function TransactionScreen({ route }) {
       if (type === "restock" && !productFound && productName.trim()) {
         Alert.alert(
           t("item_not_in_inventory_title"), // New translation key
-          t("item_not_in_inventory_message", { product: productName.trim() }), // Existing message, new title
+          t("item_not_in_inventory_message", { product: productName.trim() }),
           [
             {
               text: t("cancel"),
               style: "cancel",
             },
             {
-              text: t("manage_item_now"), // Reuse existing translation
+              text: t("manage_item_now"),
               onPress: () =>
                 navigation.navigate("ManageItem", { action: "addItem" }), // Suggest adding
             },
@@ -382,8 +459,7 @@ export default function TransactionScreen({ route }) {
             {
               text: t("cancel"),
               style: "cancel",
-              onPress: () =>
-                ('User cancelled "no physical cash" alert'),
+              onPress: () => 'User cancelled "no physical cash" alert',
             },
             {
               text: t("manage_cash_now"),
@@ -442,23 +518,24 @@ export default function TransactionScreen({ route }) {
         // Use prices from selectedProductDetails. These will be null if productFound is false,
         // but the redirection logic above should prevent this code from running in that case.
         costPrice: selectedProductDetails
-          ? selectedProductDetails.costPrice
+          ? selectedProductDetails.costPricePerUnit
           : 0,
         sellingPrice: selectedProductDetails
-          ? selectedProductDetails.sellingPrice
+          ? selectedProductDetails.sellingPricePerUnit
           : 0,
         amount:
           type === "sell"
             ? (selectedProductDetails
-                ? selectedProductDetails.sellingPrice
+                ? selectedProductDetails.sellingPricePerUnit
                 : 0) * parseInt(quantity)
-            : (selectedProductDetails ? selectedProductDetails.costPrice : 0) *
-              parseInt(quantity), // Total amount based on type
+            : (selectedProductDetails
+                ? selectedProductDetails.costPricePerUnit
+                : 0) * parseInt(quantity), // Total amount based on type
       };
     }
 
     try {
-      // Your robust saveTransaction function handles all inventory/float/cash updates
+      // The saveTransaction function handles all inventory/float/cash updates
       await saveTransaction(transactionData);
 
       // After successful save, refresh balances and clear form
@@ -494,6 +571,10 @@ export default function TransactionScreen({ route }) {
       setProductFound(false); // Reset found status
       setNetworkFound(false); // Reset found status
       setSelectedProductDetails(null); // Reset product details
+      setFilteredProductSuggestions([]); // Clear suggestions
+      setShowProductSuggestions(false); // Hide suggestions
+      cancelListening(); // Ensure voice recognition is stopped
+      setRecognizedText(""); // Clear voice text
     } catch (error) {
       console.error("TransactionScreen: Error during transaction save:", error);
       Alert.alert(t("error"), error.message || t("failed_to_save_transaction"));
@@ -544,7 +625,8 @@ export default function TransactionScreen({ route }) {
                   <Icon name="tag" size={24} color="#007bff" />
                   <Text style={styles.balanceLabel}>{t("selling_price")}:</Text>
                   <Text style={styles.balanceValue}>
-                    UGX {selectedProductDetails.sellingPrice?.toLocaleString()}
+                    UGX{" "}
+                    {selectedProductDetails.sellingPricePerUnit?.toLocaleString()}
                   </Text>
                 </View>
               )}
@@ -553,7 +635,8 @@ export default function TransactionScreen({ route }) {
                   <Icon name="tag-outline" size={24} color="#28a745" />
                   <Text style={styles.balanceLabel}>{t("cost_price")}:</Text>
                   <Text style={styles.balanceValue}>
-                    UGX {selectedProductDetails.costPrice?.toLocaleString()}
+                    UGX{" "}
+                    {selectedProductDetails.costPricePerUnit?.toLocaleString()}
                   </Text>
                 </View>
               )}
@@ -564,12 +647,12 @@ export default function TransactionScreen({ route }) {
             isMobileMoneyAgent={isMobileMoneyAgent}
             transactionType={type} // Pass 'sell' or 'restock' directly
             // Balances
-            currentPhysicalCash={currentPhysicalCash} // Still passed as it's used in TransactionForm
-            availableFloat={availableFloat} // Still passed as it's used in TransactionForm
-            availableQuantity={availableQuantity} // Still passed as it's used in TransactionForm
+            currentPhysicalCash={currentPhysicalCash}
+            availableFloat={availableFloat}
+            availableQuantity={availableQuantity}
             // General Transaction States and Setters
             productName={productName}
-            setProductName={setProductName}
+            setProductName={setProductName} // Keep for voice input setting directly
             quantity={quantity}
             setQuantity={setQuantity}
             // Mobile Money Transaction States and Setters
@@ -580,6 +663,24 @@ export default function TransactionScreen({ route }) {
             // Validation and Save
             validationErrors={validationErrors}
             handleSaveTransaction={handleSaveTransaction}
+            // Voice Recognition Props
+            recognizedText={recognizedText}
+            partialResults={partialResults}
+            isListening={isListening}
+            error={error}
+            startListening={startListening}
+            stopListening={stopListening}
+            cancelListening={cancelListening}
+            setRecognizedText={setRecognizedText}
+            // --- NEW PROPS FOR SUGGESTIONS ---
+            filteredProductSuggestions={filteredProductSuggestions}
+            showProductSuggestions={showProductSuggestions}
+            onProductSuggestionPress={handleProductSuggestionPress}
+            onProductNameChange={(text) => {
+              // Enhanced setter for product name
+              setProductName(text);
+              // setShowProductSuggestions(true); // Let the useEffect handle visibility for consistency
+            }}
           />
         </ScrollView>
       </KeyboardAvoidingView>
@@ -668,6 +769,36 @@ const styles = StyleSheet.create({
   balanceValue: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#333",
+  },
+  // --- NEW STYLES for suggestions (can be here or in TransactionForm, keeping it here for consistency) ---
+  suggestionListContainer: {
+    maxHeight: 150, // Limit height to prevent it from taking too much screen space
+    borderColor: "#ccc",
+    borderWidth: 1,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    marginHorizontal: 16, // Align with form padding
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+    position: "absolute", // Position absolute for overlay
+    left: 16,
+    right: 16,
+    // Add top dynamically based on input field's position or place inside form
+    // For now, removing absolute positioning here and putting it inside TransactionForm
+    // to control its relative position better within the form's flow.
+  },
+  suggestionItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  suggestionText: {
+    fontSize: 16,
     color: "#333",
   },
 });

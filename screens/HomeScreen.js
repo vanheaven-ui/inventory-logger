@@ -11,12 +11,12 @@ import {
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LanguageContext"; // Adjust path as needed
+import { useLanguage } from "../context/LanguageContext"; 
 import { FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Import the FocusAwareStatusBar component
-import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; // Adjust path based on your project structure
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; 
 
 // Key for AsyncStorage
 const IS_AGENT_KEY = "isMobileMoneyAgent";
@@ -36,7 +36,7 @@ const Colors = {
   textLight: "#555", // Lighter text
   background: "#eef2f5", // Light background
   cardBackground: "#fff", // White for cards
-  grayLight: "#dee2e6", // Very light gray (we will use this for the header background)
+  grayLight: "#dee2e6", // Very light gray (Using this for the header background)
   grayMedium: "#adb5bd", // Medium gray
   white: "#ffffff",
 };
@@ -53,7 +53,7 @@ export default function HomeScreen() {
       if (storedStatus !== null) {
         setIsMobileMoneyAgent(JSON.parse(storedStatus));
       }
-      console.log("Loaded agent status from storage:", storedStatus);
+      ("Loaded agent status from storage:", storedStatus);
     } catch (error) {
       console.error("Failed to load agent status:", error);
     }
@@ -62,7 +62,7 @@ export default function HomeScreen() {
   const saveAgentStatus = async (value) => {
     try {
       await AsyncStorage.setItem(IS_AGENT_KEY, JSON.stringify(value));
-      console.log("Saving agent status to storage:", value);
+      ("Saving agent status to storage:", value);
     } catch (error) {
       console.error("Failed to save agent status:", error);
     }
@@ -75,7 +75,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setTimeout(() => {
-      console.log("Data refreshed!");
+      ("Data refreshed!");
       setRefreshing(false);
     }, 1500);
   }, []);
