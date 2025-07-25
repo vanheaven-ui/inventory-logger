@@ -81,6 +81,26 @@ def enableProguardInReleaseBuilds = (findProperty('android.enableProguardInRelea
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+
+
+    packagingOptions {
+        jniLibs {
+            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
+        }
+        
+            pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
+            pickFirst 'META-INF/androidx.customview_customview.version'
+            pickFirst 'META-INF/androidx.legacy_legacy-support-core-ui.version'
+            pickFirst 'META-INF/androidx.activity_activity.version'
+            pickFirst 'META-INF/androidx.fragment_fragment.version'
+            pickFirst 'META-INF/androidx.legacy_legacy-support-core-utils.version'
+            pickFirst 'META-INF/androidx.coordinatorlayout_coordinatorlayout.version'
+            pickFirst 'META-INF/androidx.drawerlayout_drawerlayout.version'
+            pickFirst 'META-INF/androidx.appcompat_appcompat.version' // <--- ADDED THIS NEW LINE!
+            // Add more 'pickFirst' lines here as new META-INF conflicts appear.
+    
+    }
+    
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -96,10 +116,7 @@ android {
         versionName "1.0.0"
     
 
-    packagingOptions {
-        jniLibs {
-            useLegacyPackaging (findProperty('expo.useLegacyPackaging')?.toBoolean() ?: false)
-        }
+    
         
             pickFirst 'META-INF/androidx.localbroadcastmanager_localbroadcastmanager.version'
             pickFirst 'META-INF/androidx.customview_customview.version'
@@ -195,6 +212,10 @@ dependencies {
         implementation jscFlavor
     }
 }
+
+
+
+
 
 
 configurations.all {

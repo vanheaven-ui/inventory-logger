@@ -6,17 +6,18 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
-  SafeAreaView,
+  SafeAreaView, // Keep SafeAreaView for overall screen padding
   Switch,
   Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useLanguage } from "../context/LanguageContext"; 
+import { useLanguage } from "../context/LanguageContext";
 import { FontAwesome5 } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useSafeAreaInsets } from "react-native-safe-area-context"; // Import useSafeAreaInsets
 
 // Import the FocusAwareStatusBar component
-import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; 
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
 
 // Key for AsyncStorage
 const IS_AGENT_KEY = "isMobileMoneyAgent";
@@ -47,13 +48,16 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
 
+  // Get safe area insets
+  const insets = useSafeAreaInsets();
+
   const loadAgentStatus = async () => {
     try {
       const storedStatus = await AsyncStorage.getItem(IS_AGENT_KEY);
       if (storedStatus !== null) {
         setIsMobileMoneyAgent(JSON.parse(storedStatus));
       }
-      ("Loaded agent status from storage:", storedStatus);
+      // console.log("Loaded agent status from storage:", storedStatus); // Use console.log for actual logging
     } catch (error) {
       console.error("Failed to load agent status:", error);
     }
@@ -62,7 +66,7 @@ export default function HomeScreen() {
   const saveAgentStatus = async (value) => {
     try {
       await AsyncStorage.setItem(IS_AGENT_KEY, JSON.stringify(value));
-      ("Saving agent status to storage:", value);
+      // console.log("Saving agent status to storage:", value); // Use console.log for actual logging
     } catch (error) {
       console.error("Failed to save agent status:", error);
     }
@@ -75,7 +79,7 @@ export default function HomeScreen() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     setTimeout(() => {
-      ("Data refreshed!");
+      // console.log("Data refreshed!"); // Use console.log for actual logging
       setRefreshing(false);
     }, 1500);
   }, []);
@@ -106,9 +110,7 @@ export default function HomeScreen() {
       <View
         style={[
           styles.fixedHeaderContainer,
-          // Removed original Android paddingTop logic as SafeAreaView generally handles it
-          // or you can explicitly add padding top to fixedHeaderContainer if needed
-          // to push content below the status bar on Android.
+          { paddingTop: insets.top }, // Dynamically set paddingTop based on safe area inset
         ]}
       >
         <View style={styles.appTitleContainerExt}>
@@ -237,10 +239,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 5,
     zIndex: 1,
-    // paddingTop is controlled by SafeAreaView for iOS or implicitly handled.
-    // Explicit padding for Android could be added here if not using SafeAreaView
-    // or if specific header height is desired.
-    paddingTop: Platform.OS === "ios" ? 0 : 0, // You might adjust this based on design needs
+    // The paddingTop is now dynamically set using insets.top
   },
   scrollView: {
     flex: 1,
@@ -258,7 +257,7 @@ const styles = StyleSheet.create({
     marginBottom: 0,
     marginTop: 0,
     paddingHorizontal: 20,
-    height: 70,
+    height: 70, // This height combined with insets.top will define the total header height
   },
   heading: {
     fontSize: 26,

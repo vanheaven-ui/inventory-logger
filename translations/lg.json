@@ -13,6 +13,8 @@
   "record_sale": "Wandika Ekyitundidwa",
   "record_deposit": "Wandika Dipositi",
   "record_restock": "Wandika Ekyizidwawo",
+  "record_a_sale": "Ekyitundidwa",
+  "record_a_restock": "Ekyizidwawo",
   "manage_float": "Manegyinga Float",
   "manage_inventory": "Manegyinga Sitoko",
   "view_summary": "Laba Samare ya leero",

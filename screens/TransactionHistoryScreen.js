@@ -12,9 +12,9 @@ import {
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { getTransactions, overwriteTransactions } from "../storage/dataStorage";
-import { useLanguage } from "../context/LanguageContext"; 
+import { useLanguage } from "../context/LanguageContext";
 
-import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; 
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
 
 const IS_AGENT_KEY = "isMobileMoneyAgent";
 
@@ -41,7 +41,7 @@ const TransactionHistoryScreen = ({ navigation }) => {
         ...tx,
         id: tx.id || `${tx.timestamp}-${index}`, // Use existing ID or create one
       }));
-      setTransactions(transactionsWithIds.reverse()); 
+      setTransactions(transactionsWithIds.reverse());
     } catch (error) {
       console.error("Failed to load transactions:", error);
     }
@@ -61,27 +61,23 @@ const TransactionHistoryScreen = ({ navigation }) => {
   };
 
   const handleClearHistory = async () => {
-    Alert.alert(
-      t("confirm"), 
-      t("confirm_delete_history"), 
-      [
-        { text: t("cancel"), style: "cancel" }, 
-        {
-          text: t("yes_delete"), 
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await overwriteTransactions([]);
-              setTransactions([]);
-              Alert.alert(t("success"), t("history_cleared_success")); 
-            } catch (error) {
-              console.error("Failed to clear transaction history:", error);
-              Alert.alert(t("error"), t("history_cleared_error")); 
-            }
-          },
+    Alert.alert(t("confirm"), t("confirm_delete_history"), [
+      { text: t("cancel"), style: "cancel" },
+      {
+        text: t("yes_delete"),
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await overwriteTransactions([]);
+            setTransactions([]);
+            Alert.alert(t("success"), t("history_cleared_success"));
+          } catch (error) {
+            console.error("Failed to clear transaction history:", error);
+            Alert.alert(t("error"), t("history_cleared_error"));
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   const getTransactionLabel = (item) => {
@@ -130,6 +126,12 @@ const TransactionHistoryScreen = ({ navigation }) => {
           <Text style={styles.detailText}>
             {t("amount")}: UGX {parseFloat(item.amount || 0).toLocaleString()}
           </Text>
+          {/* Display Network Name for Mobile Money transactions */}
+          {item.network && ( // Only display if item.network exists
+            <Text style={styles.detailText}>
+              {t("network")}: {item.network}
+            </Text>
+          )}
           {/* Display commission for Mobile Money transactions */}
           {item.commissionEarned !== undefined &&
             item.commissionEarned !== null && (

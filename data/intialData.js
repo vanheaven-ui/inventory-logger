@@ -1024,52 +1024,6 @@ const initialProducts = [
 
   // === Miscellaneous ===
   {
-    id: "PROD042",
-    name: "MTN Airtime Card 1000",
-    unit: "Card",
-    sellingPrice: 1000,
-    costPrice: 950,
-    quantity: 20,
-    category: "Telecommunication",
-    description: "MTN Airtime Scratch Card UGX 1,000",
-    voiceKeywords: [
-      "mtn airtime card 1000",
-      "mtn airtime",
-      "airtime mtn",
-      "mtn 1000 airtime",
-      "mtn scratch card",
-      "elimu mtn", // Local term for 1000 airtime
-      "kaadi mtn", // Luganda for MTN card
-      "mtn eludi", // Local slang for MTN airtime
-      "mtn akakadi", // Local term for small MTN card
-      "mtn", // Short brand for easy voice entry
-      "m t n", // Pronunciation help
-      "one thousand mtn", // Common phrasing
-    ],
-  },
-  {
-    id: "PROD043",
-    name: "Airtel Airtime Card 2000",
-    unit: "Card",
-    sellingPrice: 2000,
-    costPrice: 1900,
-    quantity: 15,
-    category: "Telecommunication",
-    description: "Airtel Airtime Scratch Card UGX 2,000",
-    voiceKeywords: [
-      "airtel airtime card 2000",
-      "airtel airtime",
-      "airtime airtel",
-      "airtel 2000 airtime",
-      "airtel scratch card",
-      "kaadi airtel", // Luganda for Airtel card
-      "airtel eludi", // Local slang for Airtel airtime
-      "airtel akakadi", // Local term for small Airtel card
-      "airtel", // Short brand for easy voice entry
-      "two thousand airtel", // Common phrasing
-    ],
-  },
-  {
     id: "PROD044",
     name: "Embassy Cigarettes (Stick)",
     unit: "Stick",

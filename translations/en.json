@@ -212,6 +212,8 @@
   "restock_recorded_successfully": "Restock of {{quantity}} {{product}} recorded successfully!",
   "ok": "OK",
   "failed_to_save_transaction": "Failed to save transaction. Please try again.",
+  "record_a_sale": "Product Sale",
+  "record_a_restock": "Product Restock",
   "record_a_withdrawal": "Withdraw",
   "record_a_deposit": "Deposit",
 
@@ -228,5 +230,9 @@
   "speak_product_name": "Speak Product Name",
   "quantity_label": "Quantity",
   "quantity_placeholder": "Enter quantity",
-  "save_transaction": "Save Transaction"
+  "save_transaction": "Save Transaction",
+
+  "search_inventory_placeholder": "Search items...",
+  "no_matching_items": "No matching items found.",
+  "search_float_placeholder": "Search networks..."
 }

@@ -6,13 +6,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
+  Alert, // Keep Alert for critical messages
   FlatList,
 } from "react-native";
 import { FontAwesome5 } from "@expo/vector-icons";
 
-// useVoiceRecognition is now passed as props from TransactionScreen
-// import useVoiceRecognition from "../hooks/useVoiceRecognition";
 import { useLanguage } from "../context/LanguageContext";
 
 const TransactionForm = ({
@@ -23,7 +21,7 @@ const TransactionForm = ({
   availableQuantity,
 
   productName,
-  setProductName, // Keep this as TransactionScreen's onProductNameChange will wrap it
+  setProductName,
   quantity,
   setQuantity,
 
@@ -39,11 +37,12 @@ const TransactionForm = ({
   recognizedText,
   partialResults,
   isListening,
-  error,
+  error, // <-- This prop will be used to show UI for errors
   startListening,
   stopListening,
   cancelListening,
-  setRecognizedText,
+  setRecognizedText, // Renamed from resetVoiceRecognition to match the hook's return
+  resetVoiceRecognition, // <-- Added this prop back, it's very useful
 
   // Props for Product Suggestions
   filteredProductSuggestions,
@@ -65,7 +64,7 @@ const TransactionForm = ({
 
   const currencyFormatter = new Intl.NumberFormat(language || "en", {
     style: "currency",
-    currency: "UGX",
+    currency: "UGX", // Assuming UGX is the fixed currency for your app based on previous context
     minimumFractionDigits: 0,
   });
 
@@ -96,12 +95,12 @@ const TransactionForm = ({
           break;
       }
       setActiveVoiceField(null);
-      setRecognizedText(""); // Clear recognized text after processing
+      // setRecognizedText(""); // This is handled by the parent's resetVoiceRecognition
       stopListening(); // Stop listening after processing the final result
     }
     // If listening stops for any reason (e.g., error, timeout, or manual stop)
     // and there was an active field, clear the active field.
-    if (!isListening && activeVoiceField) {
+    if (!isListening && activeVoiceField && !error) { // Only clear activeVoiceField if no error, as error needs user attention
       setActiveVoiceField(null);
     }
   }, [
@@ -112,8 +111,9 @@ const TransactionForm = ({
     setQuantity,
     setMmNetworkName,
     setMmAmount,
-    setRecognizedText,
+    // setRecognizedText, // No longer needed here as parent handles it
     stopListening,
+    error // Added error to dependency array to consider its state
   ]);
 
   // Effect to handle form type change (Mobile Money Agent vs. General Product)
@@ -126,21 +126,25 @@ const TransactionForm = ({
       setMmAmount("");
     }
 
-    if (isListening) {
-      (async () => {
-        try {
+    // Always attempt to cancel listening on form type change
+    // regardless of whether `isListening` is true, to ensure a clean state.
+    (async () => {
+      try {
+        if (isListening) { // Only attempt if currently listening
           console.log(
             "TransactionForm: Cancelling voice due to form type change."
           );
           await cancelListening();
-        } catch (e) {
-          console.error(
-            "TransactionForm: Error cancelling voice on form type change:",
-            e
-          );
         }
-      })();
-    }
+        // Always reset voice recognition state when form type changes
+        resetVoiceRecognition();
+      } catch (e) {
+        console.error(
+          "TransactionForm: Error cancelling/resetting voice on form type change:",
+          e
+        );
+      }
+    })();
   }, [
     isMobileMoneyAgent,
     isListening,
@@ -149,16 +153,17 @@ const TransactionForm = ({
     setMmNetworkName,
     setMmAmount,
     cancelListening,
+    resetVoiceRecognition, // Add resetVoiceRecognition to dependencies
   ]);
 
   // Refined handleVoiceInputPress to prevent redundant cancellations and manage state
   const handleVoiceInputPress = async (field) => {
-    // If an error exists, notify the user and reset before trying again
+    // If there's an existing error, and the user taps the mic button again for *any* field,
+    // we should immediately reset the voice recognition state.
     if (error) {
-      Alert.alert(
-        t("voice_error"),
-        `${t("voice_error_message")}: ${error}\n${t("please_try_again")}`
-      );
+      console.log("TransactionForm: Clearing previous voice error and retrying.");
+      resetVoiceRecognition(); // Clear error and other voice states
+      // We'll proceed to start listening below after clearing
     }
 
     if (isListening) {
@@ -222,16 +227,32 @@ const TransactionForm = ({
 
   const renderVoiceInputButton = (fieldKey, placeholderTextKey) => (
     <TouchableOpacity
-      style={styles.voiceButton}
+      style={[
+        styles.voiceButton,
+        isListening && activeVoiceField === fieldKey && styles.voiceButtonActive,
+        error && styles.voiceButtonError, // Apply error style
+      ]}
       onPress={() => handleVoiceInputPress(fieldKey)}
-      disabled={!!error && !isListening}
+      // Only disable the button if there's a voice error AND it's NOT the currently active field
+      // This allows the user to tap the active mic button to stop/cancel even if an error occurs.
+      disabled={!!error && activeVoiceField !== fieldKey}
     >
       {isListening && activeVoiceField === fieldKey ? (
-        <ActivityIndicator size="small" color="#0066cc" />
+        <ActivityIndicator size="small" color="#fff" /> 
       ) : (
-        <FontAwesome5 name="microphone" size={20} color="#0066cc" />
+        <FontAwesome5
+          name={error ? "microphone-slash" : "microphone"} // Changed icon on error
+          size={20}
+          color={error ? "#dc3545" : "#0066cc"} // Red for error, blue normally
+        />
       )}
-      <Text style={styles.voiceButtonText}>
+      <Text
+        style={[
+          styles.voiceButtonText,
+          isListening && activeVoiceField === fieldKey && styles.voiceButtonTextActive,
+          error && styles.voiceButtonTextError, // Apply error text style
+        ]}
+      >
         {isListening && activeVoiceField === fieldKey
           ? t("listening")
           : t(placeholderTextKey)}
@@ -406,10 +427,26 @@ const TransactionForm = ({
         </>
       )}
 
-      {error && <Text style={styles.errorText}>Voice Error: {error}</Text>}
-      {isListening && partialResults.length > 0 && (
+      {/* --- Voice Error Display --- */}
+      {error && (
+        <View style={styles.voiceErrorContainer}>
+          <FontAwesome5 name="exclamation-triangle" size={18} color="#dc3545" style={styles.voiceErrorIcon} />
+          <View style={styles.voiceErrorMessageContent}>
+            <Text style={styles.voiceErrorTitle}>{t("voice_error")}</Text>
+            <Text style={styles.voiceErrorText}>
+              {t("voice_error_message_prefix")}: {error}
+            </Text>
+            <TouchableOpacity onPress={resetVoiceRecognition} style={styles.voiceErrorRetryButton}>
+              <Text style={styles.voiceErrorRetryButtonText}>{t("retry_voice")}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Partial Results Display (only show if actively listening and no error) */}
+      {isListening && partialResults.length > 0 && !error && (
         <Text style={styles.partialResultsText}>
-          {t("listening")} {partialResults[0]}...
+          {t("listening_for_input")} {partialResults[0]}...
         </Text>
       )}
 
@@ -481,15 +518,29 @@ const styles = StyleSheet.create({
   voiceButton: {
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: "#e6f2ff",
+    backgroundColor: "#e6f2ff", // Default light blue
     borderRadius: 5,
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
   },
+  voiceButtonActive: {
+    backgroundColor: "#0066cc", // Darker blue when active
+  },
+  voiceButtonError: {
+    backgroundColor: "#ffe0e0", // Light red for error state
+    borderColor: '#dc3545', // Red border
+    borderWidth: 1,
+  },
   voiceButtonText: {
-    color: "#0066cc",
+    color: "#0066cc", // Default blue text
     fontSize: 12,
+  },
+  voiceButtonTextActive: {
+    color: "#fff", // White text when active
+  },
+  voiceButtonTextError: {
+    color: "#dc3545", // Red text for error state
   },
   partialResultsText: {
     color: "#0066cc",
@@ -531,5 +582,51 @@ const styles = StyleSheet.create({
   suggestionText: {
     fontSize: 16,
     color: "#333",
+  },
+  // --- New Styles for Voice Error Display ---
+  voiceErrorContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start', // Align items to the start for better text flow
+    backgroundColor: '#fff3cd', // Light yellow for warnings/errors
+    borderColor: '#ffc107',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15, // Space it out from the next element
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  voiceErrorIcon: {
+    marginRight: 10,
+    marginTop: 2, // Align icon with the first line of text
+  },
+  voiceErrorMessageContent: {
+    flex: 1, // Allow text content to take up remaining space
+  },
+  voiceErrorTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#856404', // Darker yellow/brown for title
+    marginBottom: 5,
+  },
+  voiceErrorText: {
+    fontSize: 14,
+    color: '#856404', // Darker yellow/brown for text
+    marginBottom: 10,
+  },
+  voiceErrorRetryButton: {
+    backgroundColor: '#ffc107', // Match header orange or a suitable warning color
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    alignSelf: 'flex-start', // Align button to the left
+  },
+  voiceErrorRetryButtonText: {
+    color: '#fff', // White text for better contrast
+    fontSize: 14,
+    fontWeight: 'bold',
   },
 });

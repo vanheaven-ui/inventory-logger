@@ -24,7 +24,7 @@ import Toast from "react-native-toast-message";
 import { useLanguage } from "../context/LanguageContext";
 import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
 import useVoiceRecognition from "../hooks/useVoiceRecognition";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+import Icon from "react-native-vector-icons/MaterialCommunityIcons"; // Make sure this is FontAwesome5 if you want the specific triangle icon
 import { saveInventoryItem } from "../storage/dataStorage";
 
 export default function ManageItemScreen() {
@@ -37,11 +37,12 @@ export default function ManageItemScreen() {
     recognizedText,
     partialResults,
     isListening,
-    error: voiceError,
+    error: voiceError, // Renamed to voiceError for clarity within this component
     startListening,
     stopListening,
     cancelListening,
-    setRecognizedText,
+    setRecognizedText, // This typically also clears partial results
+    resetVoiceRecognition, // <--- Add this from your hook to clear errors and states
   } = useVoiceRecognition();
 
   const {
@@ -51,17 +52,14 @@ export default function ManageItemScreen() {
   } = route.params || {};
 
   const [itemName, setItemName] = useState("");
-  // Renamed currentStock to stockQuantity
   const [stockQuantity, setStockQuantity] = useState("0");
   const [costPricePerUnit, setCostPricePerUnit] = useState("0");
   const [sellingPricePerUnit, setSellingPricePerUnit] = useState("0");
-  // Removed unit, category, description states
 
   const [loading, setLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [activeInput, setActiveInput] = useState(null);
 
-  // Use a ref to store the locale for speech recognition
   const speechRecognizerLocale = React.useRef(language);
 
   // Update locale ref if language changes
@@ -73,20 +71,18 @@ export default function ManageItemScreen() {
     if (itemToEdit) {
       setIsEditing(true);
       setItemName(itemToEdit.itemName || "");
-      // Update from currentStock to stockQuantity
       setStockQuantity(String(itemToEdit.currentStock || 0));
       setCostPricePerUnit(String(itemToEdit.costPricePerUnit || 0));
       setSellingPricePerUnit(String(itemToEdit.sellingPricePerUnit || 0));
-      // Removed unit, category, description population
     } else if (isRedirectedNewItem && passedItemName) {
       setItemName(passedItemName);
-      setStockQuantity("0"); // Update for new item
+      setStockQuantity("0");
       setCostPricePerUnit("0");
       setSellingPricePerUnit("0");
       setIsEditing(false);
     } else {
       setItemName("");
-      setStockQuantity("0"); // Update for new item default
+      setStockQuantity("0");
       setCostPricePerUnit("0");
       setSellingPricePerUnit("0");
       setIsEditing(false);
@@ -97,12 +93,12 @@ export default function ManageItemScreen() {
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: isEditing ? t("edit_item") : t("add_new_item"),
-      headerShown: true, // Ensure the header is shown
+      headerShown: true,
       headerStyle: {
-        backgroundColor: "#28a745", // Match your desired green color
+        backgroundColor: "#28a745",
       },
-      headerTintColor: "#fff", // White color for title and back arrow
-      headerBackTitleVisible: false, // Hide the iOS "Back" text next to the arrow
+      headerTintColor: "#fff",
+      headerBackTitleVisible: false,
     });
   }, [navigation, isEditing, t]);
 
@@ -121,7 +117,7 @@ export default function ManageItemScreen() {
         case "itemName":
           setItemName(recognizedText);
           break;
-        case "stockQuantity": // Updated to stockQuantity
+        case "stockQuantity":
           setStockQuantity(parseNumberFromVoice(recognizedText));
           break;
         case "costPricePerUnit":
@@ -130,14 +126,15 @@ export default function ManageItemScreen() {
         case "sellingPricePerUnit":
           setSellingPricePerUnit(parseNumberFromVoice(recognizedText));
           break;
-        // Removed cases for unit, category, description
       }
-      setRecognizedText("");
+      setRecognizedText(""); // Clear the recognized text in the hook
       stopListening();
       setActiveInput(null);
     }
     // If listening stops for any reason (user stops, error), clear active input
-    if (!isListening && activeInput) {
+    // Only clear if there's no persistent voiceError after stopping,
+    // as we want the error to remain visible.
+    if (!isListening && activeInput && !voiceError) {
       setActiveInput(null);
     }
   }, [
@@ -146,27 +143,30 @@ export default function ManageItemScreen() {
     isListening,
     setRecognizedText,
     stopListening,
+    voiceError, // Include voiceError in dependencies
   ]);
 
-  useEffect(() => {
-    if (voiceError) {
-      Toast.show({
-        type: "error",
-        text1: t("voice_input_error"),
-        text2: voiceError,
-        visibilityTime: 4000,
-      });
-    }
-  }, [voiceError, t]);
+  // Removed the Toast.show for voiceError here. We will display it directly.
+  // useEffect(() => {
+  //   if (voiceError) {
+  //     Toast.show({
+  //       type: "error",
+  //       text1: t("voice_input_error"),
+  //       text2: voiceError,
+  //       visibilityTime: 4000,
+  //     });
+  //   }
+  // }, [voiceError, t]);
 
   useFocusEffect(
     useCallback(() => {
       return () => {
+        // When screen loses focus, ensure voice recognition is stopped and reset
         cancelListening();
+        resetVoiceRecognition(); // Reset the voice recognition states, including error
         setActiveInput(null);
-        setRecognizedText("");
       };
-    }, [cancelListening, setRecognizedText])
+    }, [cancelListening, resetVoiceRecognition]) // Added resetVoiceRecognition
   );
 
   const handleSaveItem = async () => {
@@ -178,6 +178,7 @@ export default function ManageItemScreen() {
     setLoading(true);
     cancelListening();
     setActiveInput(null);
+    resetVoiceRecognition(); // Ensure voice states are reset on save attempt
 
     try {
       const derivedVoiceKeywords = itemName
@@ -191,11 +192,9 @@ export default function ManageItemScreen() {
       const itemData = {
         id: itemToEdit?.id || Date.now().toString(),
         itemName: itemName.trim(),
-        // Updated to stockQuantity for saving
-        currentStock: parseFloat(stockQuantity) || 0, // Keep the key as 'currentStock' for storage consistency if needed, but use stockQuantity state
+        currentStock: parseFloat(stockQuantity) || 0,
         costPricePerUnit: parseFloat(costPricePerUnit) || 0,
         sellingPricePerUnit: parseFloat(sellingPricePerUnit) || 0,
-        // Removed unit, category, description from itemData
         voiceKeywords: uniqueKeywords,
       };
 
@@ -220,13 +219,22 @@ export default function ManageItemScreen() {
   };
 
   const handleMicPress = (inputName) => {
+    // If there's an existing voice error, clear it before attempting to listen again
+    if (voiceError) {
+      console.log(
+        "ManageItemScreen: Clearing previous voice error and retrying."
+      );
+      resetVoiceRecognition(); // This clears the voiceError, isListening, recognizedText, etc.
+      // After resetting, proceed to start listening for the new input
+    }
+
     if (isListening && activeInput === inputName) {
       cancelListening(); // Stop listening if already active for this field
       setActiveInput(null);
     } else {
       cancelListening(); // Cancel any existing listening session
       setActiveInput(inputName);
-      setRecognizedText("");
+      setRecognizedText(""); // Clear previous recognized text
       startListening(speechRecognizerLocale.current); // Pass the current locale to the hook
     }
   };
@@ -252,8 +260,16 @@ export default function ManageItemScreen() {
             styles.input,
             multiline && styles.multilineInput,
             !editable && styles.disabledInput,
+            // Apply error border if this is the active input and there's a voice error
+            activeInput === inputIdentifier && voiceError && styles.errorInput,
           ]}
-          value={value}
+          value={
+            isListening &&
+            activeInput === inputIdentifier &&
+            partialResults.length > 0
+              ? partialResults[0] // Show partial results while listening
+              : value // Otherwise, show the actual value
+          }
           onChangeText={onChangeText}
           placeholder={placeholder}
           placeholderTextColor="#999"
@@ -261,9 +277,25 @@ export default function ManageItemScreen() {
           multiline={multiline}
           numberOfLines={numberOfLines}
           autoCapitalize={autoCapitalize}
-          onFocus={() => setActiveInput(inputIdentifier)}
-          onBlur={() => setActiveInput(null)}
-          editable={editable}
+          // Only set active input if no voice error or if it's the current active input
+          onFocus={() => {
+            // If there's a voice error, don't auto-activate input until user clears it or taps mic
+            if (!voiceError) {
+              setActiveInput(inputIdentifier);
+            } else if (activeInput === inputIdentifier) {
+              // If this is already the active input and there's an error, keep it active for visual feedback
+              setActiveInput(inputIdentifier);
+            }
+          }}
+          onBlur={() => {
+            // Only deactivate if no voice error or if this input is not the source of the error
+            if (!voiceError || activeInput !== inputIdentifier) {
+              setActiveInput(null);
+            }
+          }}
+          editable={
+            editable && (!isListening || activeInput === inputIdentifier)
+          } // Disable typing while listening to voice input for other fields
         />
         <TouchableOpacity
           style={[
@@ -272,31 +304,44 @@ export default function ManageItemScreen() {
               activeInput === inputIdentifier &&
               styles.micButtonActive,
             !editable && styles.micButtonDisabled,
+            voiceError && styles.micButtonError, // Apply error style to button
           ]}
           onPress={() => handleMicPress(inputIdentifier)}
-          disabled={!editable}
+          disabled={
+            !editable || (voiceError && activeInput !== inputIdentifier)
+          } // Disable if not editable, or if voice error and not current active input
         >
           {isListening && activeInput === inputIdentifier ? (
-            <ActivityIndicator size="small" color="red" />
+            <ActivityIndicator size="small" color="#fff" />
           ) : (
             <Icon
-              name="microphone-outline"
+              name={voiceError ? "microphone-off" : "microphone-outline"} // Change icon based on voiceError
               size={24}
-              color={!editable ? "#aaa" : "#666"}
+              color={voiceError ? "#dc3545" : !editable ? "#aaa" : "#666"}
             />
           )}
-          <Text style={styles.micButtonText}>
+          <Text
+            style={[
+              styles.micButtonText,
+              isListening &&
+                activeInput === inputIdentifier &&
+                styles.micButtonTextActive,
+              voiceError && styles.micButtonTextError, // Apply error text color
+            ]}
+          >
             {isListening && activeInput === inputIdentifier
               ? t("listening")
               : t(micPlaceholderKey)}
           </Text>
         </TouchableOpacity>
       </View>
+      {/* Partial results moved here for better context */}
       {isListening &&
         partialResults.length > 0 &&
-        activeInput === inputIdentifier && (
+        activeInput === inputIdentifier &&
+        !voiceError && ( // Only show partials if no voice error
           <Text style={styles.partialText}>
-            {t("listening")} {partialResults[0]}...
+            {t("listening_for_input")} {partialResults[0]}...
           </Text>
         )}
     </>
@@ -308,7 +353,7 @@ export default function ManageItemScreen() {
       style={styles.fullContainer}
     >
       <FocusAwareStatusBar
-        backgroundColor="#28a745" // Status bar will match the new header color
+        backgroundColor="#28a745"
         barStyle="light-content"
         animated={true}
       />
@@ -326,25 +371,25 @@ export default function ManageItemScreen() {
             1,
             "sentences",
             !isEditing,
-            "speak_item_name" // Mic button text key
+            "speak_item_name"
           )}
           {renderInputField(
-            t("stock_quantity"), // Updated label to stock_quantity
-            stockQuantity, // Updated to stockQuantity state
-            setStockQuantity, // Updated to setStockQuantity
-            t("enter_stock_quantity"), // Updated placeholder
-            "stockQuantity", // Updated identifier
+            t("stock_quantity"),
+            stockQuantity,
+            (text) => setStockQuantity(text.replace(/[^0-9.]/g, "")), // Ensure only numbers
+            t("enter_stock_quantity"),
+            "stockQuantity",
             "numeric",
             false,
             1,
             "none",
             true,
-            "speak_quantity" // Mic button text key
+            "speak_quantity"
           )}
           {renderInputField(
             t("cost_price_per_unit"),
             costPricePerUnit,
-            setCostPricePerUnit,
+            (text) => setCostPricePerUnit(text.replace(/[^0-9.]/g, "")), // Ensure only numbers
             t("enter_cost_price"),
             "costPricePerUnit",
             "numeric",
@@ -352,12 +397,12 @@ export default function ManageItemScreen() {
             1,
             "none",
             true,
-            "speak_price" // Mic button text key
+            "speak_price"
           )}
           {renderInputField(
             t("selling_price_per_unit"),
             sellingPricePerUnit,
-            setSellingPricePerUnit,
+            (text) => setSellingPricePerUnit(text.replace(/[^0-9.]/g, "")), // Ensure only numbers
             t("enter_selling_price"),
             "sellingPricePerUnit",
             "numeric",
@@ -365,10 +410,37 @@ export default function ManageItemScreen() {
             1,
             "none",
             true,
-            "speak_price" // Mic button text key
+            "speak_price"
           )}
         </View>
       </ScrollView>
+
+      {/* --- Voice Error Display --- */}
+      {voiceError && (
+        <View style={styles.voiceErrorContainer}>
+          <Icon
+            name="alert-circle-outline"
+            size={24}
+            color="#dc3545"
+            style={styles.voiceErrorIcon}
+          />
+          <View style={styles.voiceErrorMessageContent}>
+            <Text style={styles.voiceErrorTitle}>{t("voice_input_error")}</Text>
+            <Text style={styles.voiceErrorText}>
+              {t("voice_error_message_prefix")}: {voiceError}
+            </Text>
+            <TouchableOpacity
+              onPress={resetVoiceRecognition}
+              style={styles.voiceErrorRetryButton}
+            >
+              <Text style={styles.voiceErrorRetryButtonText}>
+                {t("retry_voice")}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
       {loading || isListening ? (
         <ActivityIndicator
           size="large"
@@ -430,29 +502,43 @@ const styles = StyleSheet.create({
     backgroundColor: "#fcfcfc",
     marginRight: 10,
   },
+  errorInput: {
+    borderColor: "#dc3545", // Red border for input when voice error exists for that field
+  },
   disabledInput: {
     backgroundColor: "#e9ecef",
     color: "#6c757d",
   },
   micButton: {
-    flexDirection: "row", // Arrange icon and text horizontally
+    flexDirection: "row",
     alignItems: "center",
     padding: 10,
     borderRadius: 8,
     backgroundColor: "#e0e0e0",
     justifyContent: "center",
-    gap: 5, // Space between icon and text
+    gap: 5,
   },
   micButtonActive: {
-    backgroundColor: "#ffe0e0",
+    backgroundColor: "#28a745", // Green when listening (consistent with header)
   },
   micButtonDisabled: {
     backgroundColor: "#f1f1f1",
     opacity: 0.6,
   },
   micButtonText: {
-    color: "#666", // Default text color
+    color: "#666",
     fontSize: 12,
+  },
+  micButtonTextActive: {
+    color: "#fff", // White text when active
+  },
+  micButtonError: {
+    backgroundColor: "#ffe0e0", // Light red for error state
+    borderColor: "#dc3545",
+    borderWidth: 1,
+  },
+  micButtonTextError: {
+    color: "#dc3545", // Red text for error state
   },
   multilineInput: {
     minHeight: 100,
@@ -472,6 +558,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     marginTop: 20,
+    marginHorizontal: 20, // Add horizontal margin for the button
   },
   buttonText: {
     color: "#fff",
@@ -481,5 +568,52 @@ const styles = StyleSheet.create({
   loading: {
     marginTop: 20,
     marginBottom: 20,
+  },
+  // --- New Styles for Voice Error Display ---
+  voiceErrorContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff3cd", // Light yellow for warnings/errors
+    borderColor: "#ffc107",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 15,
+    marginHorizontal: 20, // Add horizontal margin
+    marginBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  voiceErrorIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  voiceErrorMessageContent: {
+    flex: 1,
+  },
+  voiceErrorTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#856404",
+    marginBottom: 5,
+  },
+  voiceErrorText: {
+    fontSize: 14,
+    color: "#856404",
+    marginBottom: 10,
+  },
+  voiceErrorRetryButton: {
+    backgroundColor: "#ffc107",
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    alignSelf: "flex-start",
+  },
+  voiceErrorRetryButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });

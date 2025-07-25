@@ -7,6 +7,7 @@ import Toast, {
   ErrorToast,
   SuccessToast,
 } from "react-native-toast-message";
+import { SafeAreaProvider } from "react-native-safe-area-context"; 
 
 // Import screens
 import HomeScreen from "./screens/HomeScreen";
@@ -52,15 +53,14 @@ const toastConfig = {
       }}
       contentContainerStyle={{ paddingHorizontal: 15 }}
       text1Style={{
-        fontSize: 16, // Slightly larger
-        fontWeight: "bold", // Make it bold
+        fontSize: 16,
+        fontWeight: "bold",
         color: Colors.textDark,
       }}
       text2Style={{
         fontSize: 13,
         color: Colors.darkGray,
       }}
-      // Add more customization for visibility/shadow if needed
       containerStyle={{
         elevation: 5,
         shadowColor: "#000",
@@ -132,16 +132,6 @@ const toastConfig = {
       }}
     />
   ),
-  // More custom types here for unique designs
-  // For example:
-  // custom_success: (props) => (
-  //   <BaseToast
-  //     {...props}
-  //     style={{ borderLeftColor: 'purple', borderWidth: 2 }}
-  //     text1Style={{ fontSize: 18, color: 'purple' }}
-  //     text2Style={{ fontSize: 14 }}
-  //   />
-  // )
 };
 
 function AppNavigatorContent() {
@@ -250,12 +240,9 @@ export default function App() {
   useEffect(() => {
     async function prepareApp() {
       try {
-        // Run the initialization logic when the app mounts
         await initializeShopData();
-        // You can load other initial data or perform other startup tasks here
       } catch (e) {
         console.error("Failed to prepare app data:", e);
-        // Implement error handling, e.g., show an error message to the user
         Toast.show({
           type: "error",
           text1: "Initialization Error",
@@ -263,17 +250,16 @@ export default function App() {
           position: "top",
         });
       } finally {
-        setIsLoading(false); // Once data is loaded/checked, stop loading
+        setIsLoading(false);
       }
     }
 
     prepareApp();
-  }, []); // The empty dependency array ensures this runs only once on mount
+  }, []);
 
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        {/* You need to define styles here or import them */}
         <ActivityIndicator size="large" color={Colors.primary} />
         <Text style={styles.loadingText}>Setting up your shop data...</Text>
       </View>
@@ -281,16 +267,21 @@ export default function App() {
   }
 
   return (
-    <LanguageProvider>
-      <NavigationContainer>
-        <AppNavigatorContent />
-      </NavigationContainer>
-      <Toast config={toastConfig} />
-    </LanguageProvider>
+    <SafeAreaProvider>
+      {" "}
+      {/* <-- Added SafeAreaProvider here */}
+      <LanguageProvider>
+        <NavigationContainer>
+          <AppNavigatorContent />
+        </NavigationContainer>
+        <Toast config={toastConfig} />
+      </LanguageProvider>
+    </SafeAreaProvider>
   );
 }
 
-const styles = {
+const styles = StyleSheet.create({
+  // <-- Added StyleSheet.create for consistency
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
@@ -302,4 +293,4 @@ const styles = {
     fontSize: 18,
     color: Colors.textDark,
   },
-};
+});

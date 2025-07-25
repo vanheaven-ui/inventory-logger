@@ -8,9 +8,7 @@ import {
   SafeAreaView,
   Alert,
   ActivityIndicator,
-  // Add StatusBar here for direct use, or rely on FocusAwareStatusBar
-  // StatusBar, // You don't need to import StatusBar directly if you're using FocusAwareStatusBar
-  Platform, // Import Platform for Android-specific status bar background
+  TextInput, // <-- Import TextInput
 } from "react-native";
 import { useNavigation, useFocusEffect } from "@react-navigation/native";
 import { useLanguage } from "../context/LanguageContext";
@@ -27,7 +25,7 @@ import {
 import Toast from "react-native-toast-message";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import FocusAwareStatusBar from "../components/FocusAwareStatusBar"; 
+import FocusAwareStatusBar from "../components/FocusAwareStatusBar";
 
 // Key for AsyncStorage (to get agent status)
 const IS_AGENT_KEY = "isMobileMoneyAgent";
@@ -40,6 +38,7 @@ export default function InventoryScreen() {
   const [totalSalesValue, setTotalSalesValue] = useState(0);
   const [loading, setLoading] = useState(false);
   const [isMobileMoneyAgent, setIsMobileMoneyAgent] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(""); // <-- New state for search query
 
   // Load agent status from AsyncStorage
   const loadAgentStatus = useCallback(async () => {
@@ -233,6 +232,11 @@ export default function InventoryScreen() {
     );
   };
 
+  // Filtered items based on search query
+  const filteredItems = displayedItems.filter((item) =>
+    item.itemName.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   const renderItem = ({ item }) => (
     <View style={styles.itemCard}>
       <View style={styles.itemDetails}>
@@ -346,6 +350,25 @@ export default function InventoryScreen() {
           </View>
         </View>
 
+        {/* Smart Filter/Search Bar */}
+        <View style={styles.searchBarContainer}>
+          <Icon
+            name="magnify"
+            size={20}
+            color="#888"
+            style={styles.searchIcon}
+          />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t("search_inventory_placeholder")} // Add this to your translations
+            placeholderTextColor="#888"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing" // For iOS
+            returnKeyType="search"
+          />
+        </View>
+
         {!loading && displayedItems.length > 0 && (
           <TouchableOpacity
             style={styles.clearAllButton}
@@ -365,7 +388,9 @@ export default function InventoryScreen() {
             color="#007bff"
             style={styles.loadingIndicator}
           />
-        ) : displayedItems.length === 0 ? (
+        ) : filteredItems.length === 0 && searchQuery !== "" ? (
+          <Text style={styles.noDataText}>{t("no_matching_items")}</Text>
+        ) : filteredItems.length === 0 && searchQuery === "" ? (
           <Text style={styles.noDataText}>
             {isMobileMoneyAgent
               ? t("no_networks_added")
@@ -373,7 +398,7 @@ export default function InventoryScreen() {
           </Text>
         ) : (
           <FlatList
-            data={displayedItems}
+            data={filteredItems} // <-- Use filteredItems here
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             contentContainerStyle={styles.listContent}
@@ -459,6 +484,31 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#007bff",
   },
+  // --- New Styles for Search Bar ---
+  searchBarContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    marginHorizontal: 5,
+    marginBottom: 15,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  searchIcon: {
+    marginRight: 10,
+  },
+  searchInput: {
+    flex: 1,
+    height: 45,
+    fontSize: 16,
+    color: "#333",
+  },
+  // --- End New Styles ---
   clearAllButton: {
     backgroundColor: "#dc3545",
     paddingVertical: 12,

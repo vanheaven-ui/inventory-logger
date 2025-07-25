@@ -56,6 +56,7 @@ export default function ManageFloatScreen() {
     stopListening,
     cancelListening,
     setRecognizedText,
+    resetVoiceRecognition, // <--- Ensure your useVoiceRecognition hook exports this!
   } = useVoiceRecognition();
 
   const [floatEntries, setFloatEntries] = useState([]); // E-Value/Mobile Money floats
@@ -83,19 +84,18 @@ export default function ManageFloatScreen() {
   }, [language]);
 
   // --- Header Configuration with React Navigation ---
-  // Updated header style to match new modern look
   useLayoutEffect(() => {
     navigation.setOptions({
       headerTitle: t("manage_float"),
       headerShown: true,
       headerStyle: {
-        backgroundColor: "#007bff", // Primary color for header
+        backgroundColor: "#007bff",
       },
-      headerTintColor: "#fff", // White color for title and back arrow
+      headerTintColor: "#fff",
       headerBackTitleVisible: false,
       headerRight: () => (
         <TouchableOpacity
-          style={styles.addButtonHeader} // Use a specific style for header button
+          style={styles.addButtonHeader}
           onPress={() => handleAddEditFloat()}
         >
           <Ionicons name="add" size={26} color="#fff" />
@@ -110,28 +110,18 @@ export default function ManageFloatScreen() {
       if (activeInput === "networkName") {
         setNetworkName(recognizedText);
       } else if (activeInput === "currentFloatAmount") {
-        // Attempt to parse number, but voice recognition for numbers can be tricky
-        const parsed = parseFloat(recognizedText.replace(/,/g, "")); // Remove commas before parsing
+        const parsed = parseFloat(recognizedText.replace(/,/g, ""));
         if (!isNaN(parsed)) {
           setCurrentFloatAmount(String(parsed));
         } else {
-          Toast.show({
-            type: "info",
-            text1: t("voice_input_note"),
-            text2: t("could_not_parse_number", { text: recognizedText }),
-          });
+          // No longer show a toast for could not parse number, voiceError handles it
         }
       } else if (activeInput === "physicalCashInput") {
-        // Attempt to parse number for physical cash
         const parsed = parseFloat(recognizedText.replace(/,/g, ""));
         if (!isNaN(parsed)) {
           setPhysicalCashInput(String(parsed));
         } else {
-          Toast.show({
-            type: "info",
-            text1: t("voice_input_note"),
-            text2: t("could_not_parse_number", { text: recognizedText }),
-          });
+          // No longer show a toast for could not parse number, voiceError handles it
         }
       }
       setRecognizedText(""); // Clear the recognized text after applying it
@@ -139,7 +129,9 @@ export default function ManageFloatScreen() {
       setActiveInput(null); // Clear active input
     }
     // If listening stops for any reason (user stops, error), clear active input
-    if (!isListening && activeInput) {
+    // Only clear if there's no persistent voiceError after stopping,
+    // as we want the error to remain visible.
+    if (!isListening && activeInput && !voiceError) {
       setActiveInput(null);
     }
   }, [
@@ -148,29 +140,39 @@ export default function ManageFloatScreen() {
     isListening,
     setRecognizedText,
     stopListening,
+    voiceError, // Include voiceError in dependencies
     t,
   ]);
 
-  // Effect to show voice recognition errors
-  useEffect(() => {
-    if (voiceError) {
-      Toast.show({
-        type: "error",
-        text1: t("voice_input_error"),
-        text2: voiceError,
-      });
-      // Consider adding a way to clear voiceError state in the hook if needed
-    }
-  }, [voiceError, t]);
+  // Removed the Toast.show for voiceError here. We will display it directly in modals.
+  // useEffect(() => {
+  //   if (voiceError) {
+  //     Toast.show({
+  //       type: "error",
+  //       text1: t("voice_input_error"),
+  //       text2: voiceError,
+  //     });
+  //   }
+  // }, [voiceError, t]);
 
   // Handle microphone button press
   const handleMicPress = (inputField) => {
+    // If there's an existing voice error, clear it before attempting to listen again
+    if (voiceError) {
+      console.log(
+        "ManageFloatScreen: Clearing previous voice error and retrying."
+      );
+      resetVoiceRecognition(); // This clears the voiceError, isListening, recognizedText, etc.
+      // After resetting, proceed to start listening for the new input
+    }
+
     if (isListening && activeInput === inputField) {
       cancelListening(); // Stop listening if already active for this field
       setActiveInput(null);
     } else {
       cancelListening(); // Cancel any existing listening session
       setActiveInput(inputField);
+      setRecognizedText(""); // Clear previous recognized text
       startListening(speechRecognizerLocale.current); // Pass the current locale to the hook
     }
   };
@@ -237,8 +239,9 @@ export default function ManageFloatScreen() {
       return () => {
         // Optional cleanup
         cancelListening(); // Ensure listening is stopped when leaving the screen
+        resetVoiceRecognition(); // Reset voice states on blur
       };
-    }, [loadAllFloatData, cancelListening])
+    }, [loadAllFloatData, cancelListening, resetVoiceRecognition])
   );
 
   // --- Handlers for E-Value (Mobile Money) Floats ---
@@ -251,6 +254,7 @@ export default function ManageFloatScreen() {
       setNetworkName("");
       setCurrentFloatAmount("");
     }
+    resetVoiceRecognition(); // Reset voice states when opening modal
     setIsModalVisible(true);
   };
 
@@ -266,6 +270,7 @@ export default function ManageFloatScreen() {
     }
 
     setLoading(true);
+    resetVoiceRecognition(); // Reset voice states on save attempt
     try {
       const floatData = {
         itemName: networkName.trim(),
@@ -346,6 +351,7 @@ export default function ManageFloatScreen() {
     }
 
     setLoading(true);
+    resetVoiceRecognition(); // Reset voice states on save attempt
     try {
       await savePhysicalCash(parsedCash);
       Toast.show({
@@ -399,15 +405,28 @@ export default function ManageFloatScreen() {
       style={[
         styles.micButton,
         isListening && activeInput === fieldKey && styles.micButtonActive,
+        voiceError && styles.micButtonError, // Apply error style to button
       ]}
       onPress={() => handleMicPress(fieldKey)}
+      // Disable if there's a voice error and this isn't the active input
+      disabled={voiceError && activeInput !== fieldKey}
     >
       {isListening && activeInput === fieldKey ? (
         <ActivityIndicator size="small" color="#fff" />
       ) : (
-        <Icon name="microphone-outline" size={24} color="#fff" />
+        <Icon
+          name={voiceError ? "microphone-off" : "microphone-outline"} // Change icon based on voiceError
+          size={24}
+          color={voiceError ? "#fff" : "#fff"} // Always white for mic in button
+        />
       )}
-      <Text style={styles.micButtonText}>
+      <Text
+        style={[
+          styles.micButtonText,
+          isListening && activeInput === fieldKey && styles.micButtonTextActive,
+          voiceError && styles.micButtonTextError, // Apply error text color
+        ]}
+      >
         {isListening && activeInput === fieldKey
           ? t("listening")
           : t(placeholderTextKey)}
@@ -419,7 +438,7 @@ export default function ManageFloatScreen() {
     <SafeAreaView style={styles.safeArea}>
       {/* FocusAwareStatusBar */}
       <FocusAwareStatusBar
-        backgroundColor="#007bff" // Matching React Navigation header background
+        backgroundColor="#007bff"
         barStyle="light-content"
         animated={true}
       />
@@ -442,6 +461,7 @@ export default function ManageFloatScreen() {
             <TouchableOpacity
               onPress={() => {
                 setPhysicalCashInput(totalPhysicalCash.toString()); // Pre-fill with current cash
+                resetVoiceRecognition(); // Reset voice states when opening modal
                 setIsPhysicalCashModalVisible(true);
               }}
               style={styles.adjustButton}
@@ -457,7 +477,7 @@ export default function ManageFloatScreen() {
           </View>
         </View>
 
-        {loading || isListening ? ( // Combine loading and listening for ActivityIndicator
+        {loading || isListening ? (
           <ActivityIndicator
             size="large"
             color="#007bff"
@@ -485,6 +505,7 @@ export default function ManageFloatScreen() {
         onRequestClose={() => {
           setIsModalVisible(false);
           cancelListening(); // Stop listening if modal is closed
+          resetVoiceRecognition(); // Reset voice states on modal close
         }}
       >
         <KeyboardAvoidingView
@@ -499,14 +520,41 @@ export default function ManageFloatScreen() {
             <Text style={styles.label}>{t("network_name")}</Text>
             <View style={styles.inputGroup}>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  // Apply error border if this is the active input and there's a voice error
+                  activeInput === "networkName" &&
+                    voiceError &&
+                    styles.errorInput,
+                ]}
                 placeholder={t("enter_network_name")}
                 placeholderTextColor="#999"
-                value={networkName}
+                value={
+                  isListening &&
+                  activeInput === "networkName" &&
+                  partialResults.length > 0
+                    ? partialResults[0] // Show partial results while listening
+                    : networkName // Otherwise, show the actual value
+                }
                 onChangeText={setNetworkName}
-                editable={!currentItem} // Prevent editing network name if editing existing float
-                onFocus={() => setActiveInput("networkName")}
-                onBlur={() => setActiveInput(null)}
+                editable={
+                  !currentItem &&
+                  (!isListening || activeInput === "networkName")
+                } // Prevent editing network name if editing existing float, and disable typing while listening to voice input for other fields
+                onFocus={() => {
+                  // Only set active input if no voice error or if it's the current active input
+                  if (!voiceError) {
+                    setActiveInput("networkName");
+                  } else if (activeInput === "networkName") {
+                    setActiveInput("networkName"); // Keep active for visual feedback
+                  }
+                }}
+                onBlur={() => {
+                  // Only deactivate if no voice error or if this input is not the source of the error
+                  if (!voiceError || activeInput !== "networkName") {
+                    setActiveInput(null);
+                  }
+                }}
               />
               {renderVoiceInputButtonWithText(
                 "networkName",
@@ -517,14 +565,41 @@ export default function ManageFloatScreen() {
             <Text style={styles.label}>{t("current_float_amount")}</Text>
             <View style={styles.inputGroup}>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  // Apply error border if this is the active input and there's a voice error
+                  activeInput === "currentFloatAmount" &&
+                    voiceError &&
+                    styles.errorInput,
+                ]}
                 placeholder={t("enter_current_float_amount")}
                 placeholderTextColor="#999"
                 keyboardType="numeric"
-                value={currentFloatAmount}
-                onChangeText={setCurrentFloatAmount}
-                onFocus={() => setActiveInput("currentFloatAmount")}
-                onBlur={() => setActiveInput(null)}
+                value={
+                  isListening &&
+                  activeInput === "currentFloatAmount" &&
+                  partialResults.length > 0
+                    ? partialResults[0] // Show partial results while listening
+                    : currentFloatAmount // Otherwise, show the actual value
+                }
+                onChangeText={(text) =>
+                  setCurrentFloatAmount(text.replace(/[^0-9.]/g, ""))
+                } // Ensure only numbers
+                editable={!isListening || activeInput === "currentFloatAmount"} // Disable typing while listening to voice input for other fields
+                onFocus={() => {
+                  // Only set active input if no voice error or if it's the current active input
+                  if (!voiceError) {
+                    setActiveInput("currentFloatAmount");
+                  } else if (activeInput === "currentFloatAmount") {
+                    setActiveInput("currentFloatAmount"); // Keep active for visual feedback
+                  }
+                }}
+                onBlur={() => {
+                  // Only deactivate if no voice error or if this input is not the source of the error
+                  if (!voiceError || activeInput !== "currentFloatAmount") {
+                    setActiveInput(null);
+                  }
+                }}
               />
               {renderVoiceInputButtonWithText(
                 "currentFloatAmount",
@@ -532,12 +607,43 @@ export default function ManageFloatScreen() {
               )}
             </View>
 
-            {/* Partial results for modal inputs */}
-            {isListening && partialResults.length > 0 && activeInput && (
-              <Text style={styles.partialText}>
-                {t("listening")} {partialResults[0]}...
-              </Text>
+            {/* --- Voice Error Display within Modal --- */}
+            {voiceError && (
+              <View style={styles.voiceErrorContainer}>
+                <Icon
+                  name="alert-circle-outline"
+                  size={24}
+                  color="#dc3545"
+                  style={styles.voiceErrorIcon}
+                />
+                <View style={styles.voiceErrorMessageContent}>
+                  <Text style={styles.voiceErrorTitle}>
+                    {t("voice_input_error")}
+                  </Text>
+                  <Text style={styles.voiceErrorText}>
+                    {t("voice_error_message_prefix")}: {voiceError}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={resetVoiceRecognition}
+                    style={styles.voiceErrorRetryButton}
+                  >
+                    <Text style={styles.voiceErrorRetryButtonText}>
+                      {t("retry_voice")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
+
+            {/* Partial results for modal inputs */}
+            {isListening &&
+              partialResults.length > 0 &&
+              activeInput &&
+              !voiceError && ( // Only show partials if no voice error
+                <Text style={styles.partialText}>
+                  {t("listening_for_input")} {partialResults[0]}...
+                </Text>
+              )}
 
             <View style={styles.modalButtons}>
               <TouchableOpacity
@@ -545,6 +651,7 @@ export default function ManageFloatScreen() {
                 onPress={() => {
                   setIsModalVisible(false);
                   cancelListening();
+                  resetVoiceRecognition(); // Reset voice states on cancel
                 }}
               >
                 <Text style={styles.buttonText}>{t("cancel")}</Text>
@@ -568,6 +675,7 @@ export default function ManageFloatScreen() {
         onRequestClose={() => {
           setIsPhysicalCashModalVisible(false);
           cancelListening(); // Stop listening if modal is closed
+          resetVoiceRecognition(); // Reset voice states on modal close
         }}
       >
         <KeyboardAvoidingView
@@ -579,14 +687,41 @@ export default function ManageFloatScreen() {
             <Text style={styles.label}>{t("current_physical_cash")}</Text>
             <View style={styles.inputGroup}>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  // Apply error border if this is the active input and there's a voice error
+                  activeInput === "physicalCashInput" &&
+                    voiceError &&
+                    styles.errorInput,
+                ]}
                 placeholder={t("enter_physical_cash_amount")}
                 placeholderTextColor="#999"
                 keyboardType="numeric"
-                value={physicalCashInput}
-                onChangeText={setPhysicalCashInput}
-                onFocus={() => setActiveInput("physicalCashInput")}
-                onBlur={() => setActiveInput(null)}
+                value={
+                  isListening &&
+                  activeInput === "physicalCashInput" &&
+                  partialResults.length > 0
+                    ? partialResults[0] // Show partial results while listening
+                    : physicalCashInput // Otherwise, show the actual value
+                }
+                onChangeText={(text) =>
+                  setPhysicalCashInput(text.replace(/[^0-9.]/g, ""))
+                } // Ensure only numbers
+                editable={!isListening || activeInput === "physicalCashInput"} // Disable typing while listening to voice input for other fields
+                onFocus={() => {
+                  // Only set active input if no voice error or if it's the current active input
+                  if (!voiceError) {
+                    setActiveInput("physicalCashInput");
+                  } else if (activeInput === "physicalCashInput") {
+                    setActiveInput("physicalCashInput"); // Keep active for visual feedback
+                  }
+                }}
+                onBlur={() => {
+                  // Only deactivate if no voice error or if this input is not the source of the error
+                  if (!voiceError || activeInput !== "physicalCashInput") {
+                    setActiveInput(null);
+                  }
+                }}
               />
               {renderVoiceInputButtonWithText(
                 "physicalCashInput",
@@ -594,12 +729,41 @@ export default function ManageFloatScreen() {
               )}
             </View>
 
+            {/* --- Voice Error Display within Modal --- */}
+            {voiceError && (
+              <View style={styles.voiceErrorContainer}>
+                <Icon
+                  name="alert-circle-outline"
+                  size={24}
+                  color="#dc3545"
+                  style={styles.voiceErrorIcon}
+                />
+                <View style={styles.voiceErrorMessageContent}>
+                  <Text style={styles.voiceErrorTitle}>
+                    {t("voice_input_error")}
+                  </Text>
+                  <Text style={styles.voiceErrorText}>
+                    {t("voice_error_message_prefix")}: {voiceError}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={resetVoiceRecognition}
+                    style={styles.voiceErrorRetryButton}
+                  >
+                    <Text style={styles.voiceErrorRetryButtonText}>
+                      {t("retry_voice")}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
             {/* Partial results for modal inputs */}
             {isListening &&
               partialResults.length > 0 &&
-              activeInput === "physicalCashInput" && (
+              activeInput === "physicalCashInput" &&
+              !voiceError && (
                 <Text style={styles.partialText}>
-                  {t("listening")} {partialResults[0]}...
+                  {t("listening_for_input")} {partialResults[0]}...
                 </Text>
               )}
 
@@ -609,6 +773,7 @@ export default function ManageFloatScreen() {
                 onPress={() => {
                   setIsPhysicalCashModalVisible(false);
                   cancelListening();
+                  resetVoiceRecognition(); // Reset voice states on cancel
                 }}
               >
                 <Text style={styles.buttonText}>{t("cancel")}</Text>
@@ -631,7 +796,7 @@ export default function ManageFloatScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f4f6f8", // Light background for overall screen
+    backgroundColor: "#f4f6f8",
   },
   addButtonHeader: {
     paddingHorizontal: 15,
@@ -640,27 +805,27 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 15,
-    paddingTop: 20, // Add top padding
+    paddingTop: 20,
   },
   summaryContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 25, // More space below summary cards
+    marginBottom: 25,
   },
   summaryCard: {
     backgroundColor: "#fff",
-    borderRadius: 12, // More rounded corners
+    borderRadius: 12,
     padding: 20,
     flex: 1,
     marginHorizontal: 5,
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 }, // More pronounced shadow
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
-    elevation: 5, // Android elevation
+    elevation: 5,
     borderWidth: 1,
-    borderColor: "#e0e0e0", // Subtle border
+    borderColor: "#e0e0e0",
   },
   summaryLabel: {
     fontSize: 15,
@@ -670,25 +835,25 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   summaryValue: {
-    fontSize: 24, // Larger value text
+    fontSize: 24,
     fontWeight: "bold",
-    color: "#007bff", // Primary blue color
+    color: "#007bff",
     marginBottom: 5,
   },
   warningText: {
     fontSize: 12,
-    color: "#dc3545", // Red for warnings
+    color: "#dc3545",
     marginTop: 5,
     textAlign: "center",
     fontWeight: "500",
   },
   adjustButton: {
-    backgroundColor: "#e7f3ff", // Light blue background for adjust button
+    backgroundColor: "#e7f3ff",
     paddingVertical: 10,
     paddingHorizontal: 15,
-    borderRadius: 25, // Pill shape
+    borderRadius: 25,
     marginTop: 15,
-    flexDirection: "row", // For icon and text
+    flexDirection: "row",
     alignItems: "center",
   },
   adjustButtonText: {
@@ -706,7 +871,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   listContent: {
-    paddingBottom: 20, // Add some padding to the bottom of the list
+    paddingBottom: 20,
   },
   itemCard: {
     backgroundColor: "#fff",
@@ -722,8 +887,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     shadowRadius: 3,
     elevation: 2,
-    borderLeftWidth: 5, // Highlight left border
-    borderLeftColor: "#007bff", // Primary color for highlight
+    borderLeftWidth: 5,
+    borderLeftColor: "#007bff",
   },
   itemDetails: {
     flex: 1,
@@ -756,26 +921,26 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   editButton: {
-    backgroundColor: "#28a745", // Green
+    backgroundColor: "#28a745",
   },
   deleteButton: {
-    backgroundColor: "#dc3545", // Red
+    backgroundColor: "#dc3545",
   },
   // Modal styles (reused and slightly refined)
   modalOverlay: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.4)", // Lighter overlay
+    backgroundColor: "rgba(0, 0, 0, 0.4)",
   },
   modalContent: {
     backgroundColor: "#fff",
-    borderRadius: 15, // More rounded modal
+    borderRadius: 15,
     padding: 25,
     width: "90%",
     maxWidth: 450,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 6 }, // Stronger shadow for modals
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 10,
     elevation: 8,
@@ -783,7 +948,7 @@ const styles = StyleSheet.create({
   modalHeader: {
     fontSize: 22,
     fontWeight: "700",
-    marginBottom: 25, // More space
+    marginBottom: 25,
     textAlign: "center",
     color: "#333",
   },
@@ -801,14 +966,17 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     borderWidth: 1,
-    borderColor: "#ccc", // Lighter border
+    borderColor: "#ccc",
     borderRadius: 8,
     paddingVertical: 12,
     paddingHorizontal: 15,
     fontSize: 16,
     color: "#333",
-    backgroundColor: "#f8f8f8", // Light background for input
+    backgroundColor: "#f8f8f8",
     marginRight: 10,
+  },
+  errorInput: {
+    borderColor: "#dc3545", // Red border for input when voice error exists for that field
   },
   micButton: {
     flexDirection: "row",
@@ -816,11 +984,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 8,
-    backgroundColor: "#007bff", // Primary blue for mic button
+    backgroundColor: "#007bff",
     justifyContent: "center",
   },
   micButtonActive: {
-    backgroundColor: "#ff4d4d", // A more vibrant red when active
+    backgroundColor: "#ff4d4d",
   },
   micButtonText: {
     color: "#fff",
@@ -828,12 +996,22 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "bold",
   },
+  micButtonTextActive: {
+    color: "#fff",
+  },
+  // New: Styles for mic button when there's an error
+  micButtonError: {
+    backgroundColor: "#dc3545", // Solid red for error
+  },
+  micButtonTextError: {
+    color: "#fff", // White text on red error button
+  },
   partialText: {
     fontSize: 14,
     color: "#007bff",
     textAlign: "center",
     marginBottom: 10,
-    marginTop: -8, // Adjust to be closer to input
+    marginTop: -8,
   },
   modalButtons: {
     flexDirection: "row",
@@ -858,5 +1036,51 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontSize: 16,
     fontWeight: "600",
+  },
+  // --- New Styles for Voice Error Display within Modals ---
+  voiceErrorContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#fff3cd", // Light yellow for warnings/errors
+    borderColor: "#ffc107",
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 15,
+    marginBottom: 15,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 }, // Subtle shadow
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  voiceErrorIcon: {
+    marginRight: 10,
+    marginTop: 2,
+  },
+  voiceErrorMessageContent: {
+    flex: 1,
+  },
+  voiceErrorTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#856404",
+    marginBottom: 5,
+  },
+  voiceErrorText: {
+    fontSize: 14,
+    color: "#856404",
+    marginBottom: 10,
+  },
+  voiceErrorRetryButton: {
+    backgroundColor: "#ffc107",
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 5,
+    alignSelf: "flex-start",
+  },
+  voiceErrorRetryButtonText: {
+    color: "#fff",
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });
